@@ -1,1 +1,1 @@
-/home/david/ML/shell.nix
+../shell.nix
