@@ -6,6 +6,13 @@ from sklearn.model_selection import StratifiedKFold
 from sklearn.linear_model import LogisticRegression
 import itertools
 from multiprocessing import Pool, cpu_count
+import sklearn.datasets
+
+bc = sklearn.datasets.load_breast_cancer()
+
+X, y = bc['data'], bc['target']
+
+print(bc.keys())
 
 # adapt this code below to run your analysis
 
@@ -13,25 +20,66 @@ from multiprocessing import Pool, cpu_count
 # 1. Write a function to take a list or dictionary of clfs and hypers ie
 # use logistic regression, each with 3 different sets of hyper parrameters for each
 
+class classifRandomForest:
+    def __init__(self,
+                 nTrees = 100,
+                 crit = "gini",
+                 depth = None,
+                 nodeSamples = 2,
+                 leafSamples = 1,
+                 weightFrac = 0.,
+                 features = "auto",
+                 nodes = None,
+                 bootstrap = True,
+                 oob = True,
+                 n_jobs = -1):
+        self.model = RandomForestClassifier(n_estimators = nTrees,
+                     criterion = crit,
+                     max_depth = depth,
+                     min_samples_split = nodeSamples,
+                     min_samples_leaf = leafSamples,
+                     min_weight_fraction_leaf = weightFrac,
+                     max_features = features,
+                     max_leaf_nodes = nodes,
+                     bootstrap = bootstrap,
+                     oob_score = oob,
+                     n_jobs = -1
+                     )
+    def __call__(self):
+        print(self.model)
+
+
+
+
+rf = classifRandomForest(200)
+
+#rf.train(X,y)
+
+#print(rf())
+
 class Classifier:
     # make a classifier class, instantiate it with default hyperparameters
-    def __init__(self, model, hyperPars = {}):
-        self.model = model(**hyperPars)
-        self.hyperPars = hyperPars
+    def __init__(self, method, hyperPars = {}):
+        if (method == "RandomForest"):
+            if (hyperPars == {}):
+                self.method = classifRandomForest()
+            else:
+                self.method = classifRandomForest(**hyperPars)
 
     # call method
     def __call__(self):
-        print("model: ",self.model)
-        print("Hyper parameters: ", self.hyperPars)
+        print("model: ",self.method.model)
 
+    def train(features, labels):
+        self.method.model.fit(features, labels)
 
-    # training method
-    def train(self, features, labels):
-        self.model.fit(features, labels)
-
-    # prediction method for convenience
+    #prediction method for convenience
     def predict(features):
-        self.model.predict(features)
+        self.method.model.predict(features)
+
+rf = Classifier("RandomForest", hyperPars = {"nTrees":200})
+
+print(rf())
 
 
 
@@ -57,8 +105,27 @@ class Resampling:
 # next lets make constructors for different hyperparameter sets, then we can
 # expand them into a grid or whatever
 
-def makeDiscreteParam(values):
-    return(values)
+class DiscreteParam:
+    def __init__(self,name, values):
+        self.name = name
+        self.values = values
+    def __call__(self):
+        print("param: ", name, "\nvalues: ", values)
+
+class integerParam:
+    def __init__(self, name, lower, upper, transFun = None):
+        self.name = name
+        if(transFun == None):
+            self.values = ([i for i in np.arange(lower, upper+1, dtype = int)])
+        else:
+            self.values = ([transFun(i) for i in np.arange(lower, upper+1, dtype = int)])
+    def __call__(self):
+        print("param: ", name, "\nvalues: ", values)
+
+
+x = integerParam("cat", 1, 4, 2*5)
+print(x)
+
 
 # accepts a lower bound, upper bound, and transformation function
 # yes i know list comprehensions exist but
@@ -84,13 +151,13 @@ def expandgrid(items):
 cv = Resampling("cv")
 rf = Classifier(RandomForestClassifier)
 
-pars = {
-    "n_estimators":makeIntegerParam(1,5, lambda x: 100*x),
-    "criterion":makeDiscreteParam(["gini","entropy"]),
-    "max_depth":makeIntegerParam(1,5, lambda x: 10*x)#,
-    #"min_weight_fraction_leaf":makeDoubleParam(0,2,trafo = lambda x: x*2)
-}
-print(expandgrid(pars))
+#pars = {
+#    "n_estimators":makeIntegerParam(1,5, lambda x: 100*x),
+#    "criterion":makeDiscreteParam(["gini","entropy"]),
+#    "max_depth":makeIntegerParam(1,5, lambda x: 10*x)#,
+#    #"min_weight_fraction_leaf":makeDoubleParam(0,2,trafo = lambda x: x*2)
+#}
+#print(expandgrid(pars))
 
 
 def tune(model, sampling, hyperPars = {}, parallel = False):
@@ -99,11 +166,10 @@ def tune(model, sampling, hyperPars = {}, parallel = False):
         print(grid[0])
         print(np.shape(grid))
         print(type(grid[0]))
-        for rows in np.shape(grid[0]):
 
 
 
-tune(rf, cv, pars)
+#tune(rf, cv, pars)
 
 
 
