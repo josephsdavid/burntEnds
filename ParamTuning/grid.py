@@ -149,7 +149,7 @@ def getNames(param):
 
 
 class tuneGrid:
-    def __init__(self,model, features, labels, sampling, *params):
+    def __init__(self,model, features, labels, sampling, metric, *params):
 
 
     # our default paramter test
@@ -162,6 +162,7 @@ class tuneGrid:
 
         # save the method we are tuning with:
         self.method = model.identity
+        self.metric = metric
 
         # get the names of the hyperparameters we are tuning
         self.names = list(map(getNames, params))
@@ -193,24 +194,42 @@ class tuneGrid:
         for row in range(len(grid)):
             for column in range(len(self.names)):
                 pars[self.names[column]] = (grid[row][column])
-            clf = Classifier(self.method, pars)
-            print("calculating:",(row))
+                clf = Classifier(self.method, pars)
+            print("calculating:",(row),"out of:", len(grid))
             print(clf())
+            scores = []
+            for ids,(train_index, test_index) in enumerate(self.sampler.method.split(f)):
+                X_train, X_test = f[train_index], f[test_index]
+                y_train, y_test = L[train_index], L[test_index]
+                clf.train(features = X_train, labels = y_train)
+                # I would like to get the clf.predict method working
+                preds = clf.method.model.predict(X_test)
+                scores.append(self.metric(preds, y_test))
+            print(sum(scores)/len(scores))
 
-            for ids, (train_index, test_index) in enumerate(self.sampler.method.split(f, L)):
-                clf.train(f[train_index], L[train_index])
-                pred = clf.predict(f[test_index])
-                print(pred)
+
+#            for ids, (train_index, test_index) in enumerate(self.sampler.method.split(f, L)):
+ #               clf.train(f[train_index], L[train_index])
+  #              pred = clf.predict(f[test_index])
+   #             print(pred)
+
+        #for i in range(len(g)):
+            #print(g[i])
+            #clf = Classifier(method, g[i])
+            #print(clf())
+
+
 
 
 t =  tuneGrid(rf,
          X,
          Y,
-         cv,
+         cv, roc_auc_score,
          discreteParam("crit",["gini","entropy"]),
          integerParam("nTrees", 1, 5, lambda x: 200*x),
          integerParam("depth", 2,7,transFun = lambda x: 2**x)
             )
+
 
 t.run()
 
