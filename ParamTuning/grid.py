@@ -10,9 +10,11 @@ import sklearn.datasets
 
 bc = sklearn.datasets.load_breast_cancer()
 
-X, y = bc['data'], bc['target']
+X = bc['data']
+Y = bc['target']
 
-print(bc.keys())
+
+
 
 # adapt this code below to run your analysis
 
@@ -51,7 +53,7 @@ class classifRandomForest:
 
 
 
-rf = classifRandomForest(200)
+#rf = classifRandomForest(200)
 
 #rf.train(X,y)
 
@@ -101,52 +103,93 @@ class Resampling:
     def __call__(self):
         print(self.method)
 
-
+cv = Resampling("cv")
 # next lets make constructors for different hyperparameter sets, then we can
 # expand them into a grid or whatever
 
-class DiscreteParam:
+class discreteParam:
     def __init__(self,name, values):
         self.name = name
         self.values = values
     def __call__(self):
-        print("param: ", name, "\nvalues: ", values)
+        print("param: ", self.name, "\nvalues: ", self.values)
+    def __iter__(self):
+        return(self)
+
 
 class integerParam:
     def __init__(self, name, lower, upper, transFun = None):
+        self.idx = 0
         self.name = name
         if(transFun == None):
             self.values = ([i for i in np.arange(lower, upper+1, dtype = int)])
         else:
             self.values = ([transFun(i) for i in np.arange(lower, upper+1, dtype = int)])
     def __call__(self):
-        print("param: ", name, "\nvalues: ", values)
+        print("param: ", self.name)
+        print("values: ", self.values)
+    def __iter__(self):
+        return(self)
 
 
-x = integerParam("cat", 1, 4, 2*5)
-print(x)
+
+class floatParam:
+    def __init__(self, name, lower, upper, transFun = None):
+        self.name = name
+        if(transFun == None):
+            self.values = ([i for i in np.arange(lower, upper+1, dtype = float)])
+        else:
+            self.values = ([transFun(i) for i in np.arange(lower, upper+1, dtype = float)])
+    def __call__(self):
+        print("param: ", self.name, "\nvalues: ", self.values)
+
+    def __iter__(self):
+        return(self)
+
+
+def getNames(param):
+    return(param.name)
+
+def tuneGrid(model,features, targets,sampling,*params):
+    names = list(map(getNames, params))
+    d = {}
+    for p in params:
+        d[p.name] = p.values
+
+    grid = list(itertools.product(*((d[i] )for i in sorted(d))))
+
+    g = []
+    res = {}
+
+    for row in range(len(grid)):
+        for column in range(len(names)):
+            res[names[column]] = (grid[row][column])
+        g.append(res)
+
+
+
+
+
+tuneGrid(rf,
+         X,
+         Y,
+         cv,
+         discreteParam("cat",["moose","cat","meor"]),
+         integerParam("hyp", 2,4))
+
+
+
+
+
+
+
+
+
+
 
 
 # accepts a lower bound, upper bound, and transformation function
 # yes i know list comprehensions exist but
-def makeIntegerParam(lower, upper, trafo = None):
-    if(trafo == None):
-        return([i for i in np.arange(lower, upper+1, dtype = int) ])
-    else:
-        return([trafo(i) for i in np.arange(lower, upper+1, dtype = int)])
-
-def makeDoubleParam(lower, upper, by = 0.1, trafo = None):
-    if(trafo == None):
-        return([i for i in np.arange(lower, upper, by, dtype = float)])
-    else:
-        return([trafo(i) for i in np.arange(lower, upper, by, dtype = float)])
-
-
-
-def expandgrid(items):
-   product = itertools.product(*((items[i] )for i in sorted(items)))
-   return(list(product))
-
 
 cv = Resampling("cv")
 rf = Classifier(RandomForestClassifier)
