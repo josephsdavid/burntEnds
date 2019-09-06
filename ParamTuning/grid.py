@@ -75,7 +75,7 @@ class Classifier:
 
     #prediction method for convenience
     def predict(self,features):
-        self.method.model.predict(features)
+        return(self.method.model.predict(features))
 
 rf = Classifier("RandomForest", hyperPars = {"nTrees":200})
 
@@ -203,7 +203,7 @@ class tuneGrid:
                 y_train, y_test = L[train_index], L[test_index]
                 clf.train(features = X_train, labels = y_train)
                 # I would like to get the clf.predict method working
-                preds = clf.method.model.predict(X_test)
+                preds = clf.predict(X_test)
                 scores.append(self.metric(preds, y_test))
             print(sum(scores)/len(scores))
 
