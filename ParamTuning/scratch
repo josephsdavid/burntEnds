@@ -1,0 +1,71 @@
+
+class tuneGrid:
+    def __init__(self,model, features, labels, sampling, *params):
+
+
+    # our default paramter test
+        print("testing baseline model")
+
+        for ids, (train_index, test_index) in enumerate(sampling.method.split(features, labels)):
+            model.train(features[train_index], labels[train_index])
+            pred = model.predict(features[test_index])
+        # do something where self.default exitsts
+
+        # save the method we are tuning with:
+        self.method = model.identity
+
+        # get the names of the hyperparameters we are tuning
+        self.names = list(map(getNames, params))
+        self.params = params
+        self.features = features
+        self.labels = labels
+        self.sampler = sampling
+    def run(self):
+        #
+        # instantiate an empty dict
+        d = {}
+        f = self.features
+        L = self.labels
+
+        # set up the dict using the params
+        for p in self.params:
+            d[p.name] = p.values
+
+        # expand the dict into a list of tuples based on the keys
+        # I could not figure out how to save the name in the iteration process,
+        # this is my first time doing anything with classes, dicts, lists, or
+        # itertools that is remotely interesting or complex, so bear with me please
+        grid = list(itertools.product(*((d[i] )for i in (d))))
+
+        pars = {}
+
+        print("testing other models")
+        # turn it into a lovely list of dicts for our unpacking
+        for row in range(len(grid)):
+            for column in range(len(self.names)):
+                pars[self.names[column]] = (grid[row][column])
+            clf = Classifier(self.method, pars)
+            print("calculating:",(row))
+            print(clf())
+
+            for ids, (train_index, test_index) in enumerate(self.sampler.method.split(f, L)):
+                clf.train(f[train_index], L[train_index])
+                pred = clf.predict(f[test_index])
+                print(pred)
+
+        #for i in range(len(g)):
+            #print(g[i])
+            #clf = Classifier(method, g[i])
+            #print(clf())
+
+
+
+
+t =  tuneGrid(rf,
+         X,
+         Y,
+         cv,
+         discreteParam("crit",["gini","entropy"]),
+         integerParam("nTrees", 1, 5, lambda x: 200*x),
+         integerParam("depth", 2,7,transFun = lambda x: 2**x)
+            )
