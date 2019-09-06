@@ -5,13 +5,10 @@ from sklearn.model_selection import KFold, RepeatedKFold
 from sklearn.model_selection import StratifiedKFold
 from sklearn.linear_model import LogisticRegression
 import itertools
-from multiprocessing import Pool, cpu_count
+from multiprocessing import Process, Queue
 import sklearn.datasets
 
-bc = sklearn.datasets.load_breast_cancer()
-
-X = bc['data']
-Y = bc['target']
+X,Y = sklearn.datasets.load_breast_cancer(return_X_y=True)
 
 
 
@@ -33,7 +30,7 @@ class classifRandomForest:
                  features = "auto",
                  nodes = None,
                  bootstrap = True,
-                 oob = True,
+                 oob = False,
                  n_jobs = -1):
         self.model = RandomForestClassifier(n_estimators = nTrees,
                      criterion = crit,
@@ -62,6 +59,7 @@ class classifRandomForest:
 class Classifier:
     # make a classifier class, instantiate it with default hyperparameters
     def __init__(self, method, hyperPars = {}):
+        self.identity = method
         if (method == "RandomForest"):
             if (hyperPars == {}):
                 self.method = classifRandomForest()
@@ -72,16 +70,15 @@ class Classifier:
     def __call__(self):
         print("model: ",self.method.model)
 
-    def train(features, labels):
+    def train(self,features, labels):
         self.method.model.fit(features, labels)
 
     #prediction method for convenience
-    def predict(features):
+    def predict(self,features):
         self.method.model.predict(features)
 
 rf = Classifier("RandomForest", hyperPars = {"nTrees":200})
 
-print(rf())
 
 
 
@@ -134,12 +131,12 @@ class integerParam:
 
 
 class floatParam:
-    def __init__(self, name, lower, upper, transFun = None):
+    def __init__(self, name, lower, upper, by = 0.1, transFun = None):
         self.name = name
         if(transFun == None):
-            self.values = ([i for i in np.arange(lower, upper+1, dtype = float)])
+            self.values = ([i for i in np.arange(lower, upper+1, by, dtype = float)])
         else:
-            self.values = ([transFun(i) for i in np.arange(lower, upper+1, dtype = float)])
+            self.values = ([transFun(i) for i in np.arange(lower, upper+1, by, dtype = float)])
     def __call__(self):
         print("param: ", self.name, "\nvalues: ", self.values)
 
@@ -150,32 +147,66 @@ class floatParam:
 def getNames(param):
     return(param.name)
 
-def tuneGrid(model,features, targets,sampling,*params):
+
+def tuneGrid(model, features, labels, sampling, *params):
+
+    # our default paramter test
+    print("testing baseline model")
+
+    for ids, (train_index, test_index) in enumerate(sampling.method.split(features, labels)):
+        model.train(features[train_index], labels[train_index])
+        pred = model.predict(features[test_index])
+
+    # save the method we are tuning with:
+    method = model.identity
+
+    # get the names of the hyperparameters we are tuning
     names = list(map(getNames, params))
+
+    # instantiate an empty dict
     d = {}
+
+    # set up the dict using the params
     for p in params:
         d[p.name] = p.values
 
-    grid = list(itertools.product(*((d[i] )for i in sorted(d))))
+    # expand the dict into a list of tuples based on the keys
+    # I could not figure out how to save the name in the iteration process,
+    # this is my first time doing anything with classes, dicts, lists, or
+    # itertools that is remotely interesting or complex, so bear with me please
+    grid = list(itertools.product(*((d[i] )for i in (d))))
 
-    g = []
-    res = {}
+    pars = {}
 
+    print("testing other models")
+    # turn it into a lovely list of dicts for our unpacking
     for row in range(len(grid)):
         for column in range(len(names)):
-            res[names[column]] = (grid[row][column])
-        g.append(res)
+            pars[names[column]] = (grid[row][column])
+        clf = Classifier(method, pars)
+        print("calculating:",(row))
+        print(pars)
+
+        for ids, (train_index, test_index) in enumerate(sampling.method.split(features, labels)):
+            clf.train(features[train_index], labels[train_index])
+            pred = clf.predict(features[test_index])
+
+    #for i in range(len(g)):
+        #print(g[i])
+        #clf = Classifier(method, g[i])
+        #print(clf())
 
 
 
 
-
-tuneGrid(rf,
+t =  tuneGrid(rf,
          X,
          Y,
          cv,
-         discreteParam("cat",["moose","cat","meor"]),
-         integerParam("hyp", 2,4))
+         discreteParam("crit",["gini","entropy"]),
+         integerParam("nTrees", 1, 5, lambda x: 200*x),
+         integerParam("depth", 2,7,transFun = lambda x: 2**x)
+            )
 
 
 
@@ -201,15 +232,6 @@ rf = Classifier(RandomForestClassifier)
 #    #"min_weight_fraction_leaf":makeDoubleParam(0,2,trafo = lambda x: x*2)
 #}
 #print(expandgrid(pars))
-
-
-def tune(model, sampling, hyperPars = {}, parallel = False):
-    if(parallel == False):
-        grid = expandgrid(hyperPars)
-        print(grid[0])
-        print(np.shape(grid))
-        print(type(grid[0]))
-
 
 
 #tune(rf, cv, pars)
@@ -242,9 +264,6 @@ def tune(model, sampling, hyperPars = {}, parallel = False):
 # 5. Please set up your code to be run and save the results to the directory that its executed from
 # 6. Investigate grid search function
 
-M = np.array([[1,2],[3,4],[4,5],[4,5],[4,5],[4,5],[4,5],[4,5]])
-L = np.ones(M.shape[0])
-print(L)
 #n_folds = 5
 #
 #data = (M, L, n_folds)
