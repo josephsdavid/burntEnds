@@ -1,4 +1,5 @@
 import numpy as np
+import pickle
 from sklearn.metrics import accuracy_score, roc_auc_score, classification_report # other metrics?
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import KFold, RepeatedKFold
@@ -19,6 +20,10 @@ X,Y = sklearn.datasets.load_breast_cancer(return_X_y=True)
 # 1. Write a function to take a list or dictionary of clfs and hypers ie
 # use logistic regression, each with 3 different sets of hyper parrameters for each
 
+# First I think the default values for sklearn are ridiculous
+# so we will redefine the classifiers (these are hidden) to have reasonable
+# values. Mostly the nTrees, as well as for example the regularization defaults
+# in logistic regression
 class classifRandomForest:
     def __init__(self,
                  nTrees = 100,
@@ -31,7 +36,8 @@ class classifRandomForest:
                  nodes = None,
                  bootstrap = True,
                  oob = False,
-                 n_jobs = -1):
+                 n_jobs = -1,
+                 seed = None):
         self.model = RandomForestClassifier(n_estimators = nTrees,
                      criterion = crit,
                      max_depth = depth,
@@ -42,7 +48,8 @@ class classifRandomForest:
                      max_leaf_nodes = nodes,
                      bootstrap = bootstrap,
                      oob_score = oob,
-                     n_jobs = -1
+                     n_jobs = -1,
+                     random_state = seed
                      )
     def __call__(self):
         print(self.model)
@@ -77,7 +84,7 @@ class Classifier:
     def predict(self,features):
         return(self.method.model.predict(features))
 
-rf = Classifier("RandomForest", hyperPars = {"nTrees":200})
+rf = Classifier("RandomForest", hyperPars = {"nTrees":200, "seed":47})
 
 
 
@@ -88,19 +95,19 @@ rf = Classifier("RandomForest", hyperPars = {"nTrees":200})
 
 
 class Resampling:
-    def __init__(self, method, repeats = 10, folds = 5, stratify = False):
+    def __init__(self, method, repeats = 10, folds = 5, stratify = False, seed = None):
         if(stratify == False):
             if(method == "cv"):
-                self.method = KFold(n_splits = folds)
+                self.method = KFold(n_splits = folds, random_state = seed)
             elif(method == "repeatedcv"):
-                self.method = RepeatedKFold(n_splits = folds, n_repeats = repeats)
+                self.method = RepeatedKFold(n_splits = folds, n_repeats = repeats, random_state = seed)
         else:
-            self.method = StratifiedKFold
+            self.method = StratifiedKFold(n_splits = folds, n_repeats = repeats, random_state = seed)
 
     def __call__(self):
         print(self.method)
 
-cv = Resampling("cv")
+cv = Resampling("repeatedcv", folds = 2, repeats = 5, seed = 47)
 # next lets make constructors for different hyperparameter sets, then we can
 # expand them into a grid or whatever
 
@@ -153,14 +160,6 @@ class tuneGrid:
 
 
     # our default paramter test
-        print("testing baseline model")
-
-        for ids, (train_index, test_index) in enumerate(sampling.method.split(features, labels)):
-            model.train(features[train_index], labels[train_index])
-            pred = model.predict(features[test_index])
-        # do something where self.default exitsts
-
-        # save the method we are tuning with:
         self.method = model.identity
         self.metric = metric
 
@@ -170,33 +169,33 @@ class tuneGrid:
         self.features = features
         self.labels = labels
         self.sampler = sampling
+        d = {}
+        for p in self.params:
+            d[p.name] = p.values
+        self.x = d
+        grid = list(itertools.product(*((d[i] )for i in (d))))
+        self.grid = grid
+        self.ran = False
+        self.bestTry = int(0)
+        self.bestScore = float(0)
+        self.bestPars = {}
+        self.results = []
     def run(self):
+        self.ran = True
         #
         # instantiate an empty dict
-        d = {}
         f = self.features
         L = self.labels
 
         # set up the dict using the params
-        for p in self.params:
-            d[p.name] = p.values
-
-        # expand the dict into a list of tuples based on the keys
-        # I could not figure out how to save the name in the iteration process,
-        # this is my first time doing anything with classes, dicts, lists, or
-        # itertools that is remotely interesting or complex, so bear with me please
-        grid = list(itertools.product(*((d[i] )for i in (d))))
-
         pars = {}
-
         print("testing other models")
         # turn it into a lovely list of dicts for our unpacking
-        for row in range(len(grid)):
+        for row in range(len(self.grid)):
             for column in range(len(self.names)):
-                pars[self.names[column]] = (grid[row][column])
+                pars[self.names[column]] = (self.grid[row][column])
                 clf = Classifier(self.method, pars)
-            print("calculating:",(row),"out of:", len(grid))
-            print(clf())
+            print("calculating:",(row + 1),"out of:", len(self.grid))
             scores = []
             for ids,(train_index, test_index) in enumerate(self.sampler.method.split(f)):
                 X_train, X_test = f[train_index], f[test_index]
@@ -205,33 +204,73 @@ class tuneGrid:
                 # I would like to get the clf.predict method working
                 preds = clf.predict(X_test)
                 scores.append(self.metric(preds, y_test))
-            print(sum(scores)/len(scores))
+            res = sum(scores)/len(scores)
+            print(res)
+            self.results.append(res)
+        self.bestScore = max(self.results)
+        self.bestTry = self.results.index(self.bestScore)
+        for col in range(len(self.names)):
+            self.bestPars[self.names[col]] = self.grid[self.bestTry][col]
 
+    def save(self, path = "grid.obj"):
+        filehandler = open(path,'wb')
+        pickle.dump(self, filehandler)
 
-#            for ids, (train_index, test_index) in enumerate(self.sampler.method.split(f, L)):
- #               clf.train(f[train_index], L[train_index])
-  #              pred = clf.predict(f[test_index])
-   #             print(pred)
-
-        #for i in range(len(g)):
-            #print(g[i])
-            #clf = Classifier(method, g[i])
-            #print(clf())
-
-
-
-
-t =  tuneGrid(rf,
-         X,
-         Y,
-         cv, roc_auc_score,
-         discreteParam("crit",["gini","entropy"]),
-         integerParam("nTrees", 1, 5, lambda x: 200*x),
-         integerParam("depth", 2,7,transFun = lambda x: 2**x)
+    def __call__(self):
+        if(self.ran):
+            print("----------------------")
+            print("model: ", self.method)
+            print("----------------------")
+            print("parameters: \n", self.names)
+            print("----------------------")
+            print("space:\n", self.grid)
+            print("----------------------")
+            print("results:\n", self.results)
+            print("----------------------")
+            print(
+                "Best Paramter Set:",
+                self.bestPars
             )
+            print("----------------------")
+            print(" Best Score:", self.bestScore)
+        else:
+            print("----------------------")
+            print("model: ", self.method)
+            print("----------------------")
+            print("parameters: \n", self.names)
+            print("----------------------")
+            print("space:\n", self.grid)
+            print("----------------------")
 
 
-t.run()
+
+
+
+
+#t =  tuneGrid(rf,
+#         X,
+#         Y,
+#         cv, roc_auc_score,
+#         discreteParam("crit",["gini","entropy"]),
+#         integerParam("nTrees", 1, 2, lambda x: 200*x),
+#         integerParam("depth", 2,3,transFun = lambda x: 2**x)
+#            )
+#
+
+#t.run()
+#(t())
+
+#t.save()
+
+def load(filename):
+    with open(filename, 'rb') as fileObj:
+        raw_data = fileObj.read()
+        return(pickle.loads(raw_data))
+
+t  = load("grid.obj")
+
+t()
+
 
 
 
