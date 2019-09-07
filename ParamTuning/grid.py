@@ -466,6 +466,7 @@ testCase =  tuneRandom(rf,
  samplesize
  combine new sample and elites
  repeat till we run out of money or space
+ see http://iridia.ulb.ac.be/IridiaTrSeries/link/IridiaTr2011-004.pdf
 '''
 
 
