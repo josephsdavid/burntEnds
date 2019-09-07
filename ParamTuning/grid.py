@@ -459,13 +459,15 @@ testCase =  tuneRandom(rf,
  random search using sampleSize
  two way F-test, see which ones are smaller than normal
  discard small ones, keeping elites
- calculate probability distribution for each parameter
+ sample elites with P ~ rank (see paper)
+ calculate normal(more ) distribution for each parameter
  sample each parameter space using that probability distribution, once per
  parameter, giving a parent parameter set
  calculate a normal distribution of each parameter, and generate samples of size
  samplesize
  combine new sample and elites
- repeat till we run out of money or space
+ repeat till we run out of money or space, shrinking the SD of the inherited
+ normal distribution each time
  see http://iridia.ulb.ac.be/IridiaTrSeries/link/IridiaTr2011-004.pdf
 '''
 
