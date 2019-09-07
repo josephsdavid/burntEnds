@@ -457,7 +457,7 @@ testCase =  tuneRandom(rf,
  SampleSize = Bj/(mu + min(5,j))
  First run:
  random search using sampleSize
- two way F-test, see which ones are smaller than normal
+ rank based statistical test, see which ones are smaller than normal
  discard small ones, keeping elites
  sample elites with P ~ rank (see paper)
  calculate normal(more ) distribution for each parameter
