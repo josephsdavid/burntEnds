@@ -103,12 +103,13 @@ class Resampling:
             elif(method == "repeatedcv"):
                 self.method = RepeatedKFold(n_splits = folds, n_repeats = repeats, random_state = seed)
         else:
-            self.method = StratifiedKFold(n_splits = folds, n_repeats = repeats, random_state = seed)
+            # does not work yet
+            self.method = StratifiedKFold(n_splits = folds, random_state = seed)
 
     def __call__(self):
         print(self.method)
 
-cv = Resampling("repeatedcv", folds = 2, repeats = 5, seed = 47)
+cv = Resampling("cv", folds = 3, repeats = 5, seed = 47)
 # next lets make constructors for different hyperparameter sets, then we can
 # expand them into a grid or whatever
 
@@ -452,7 +453,7 @@ testCase =  tuneRandom(rf,
  budget: B
  NRaces = 2 + log2(len(params))
  for j in nraces:
- Bj = (B - Bused)/(Nraces - j  + 1)
+ Bj = (B - Bused)/(nRaces - j  + 1)
  mu = user defined
  SampleSize = Bj/(mu + min(5,j))
  First run:
@@ -472,14 +473,163 @@ testCase =  tuneRandom(rf,
 '''
 
 
-testCase =  tuneRandom(rf,
+class tuneIrace:
+    mu = 1
+    def __init__(self,model, features, labels, sampling, metric, budget,*params):
+        self.method = model.identity
+        self.metric = metric
+        self.nRaces = math.ceil(2 + math.log(len(params),2))
+        self.Bused = 0
+        self.Bj = 0
+        self.j = 1
+        # get the names of the hyperparameters we are tuning
+        self.names = list(map(getNames, params))
+        self.params = params
+        self.features = features
+        self.labels = labels
+        self.sampler = sampling
+        d = {}
+        for p in self.params:
+            d[p.name] = p.values
+        self.x = d
+        grid = list(itertools.product(*((d[i] )for i in (d))))
+        self.grid = grid
+        self.ran = False
+        self.bestTry = int(0)
+        self.bestScore = float(0)
+        self.bestPars = {}
+        self.results = []
+        self.budget = budget
+    def getSampleSize(self):
+        return(
+            math.ceil(self.Bj / (self.mu + min(5, self.j)))
+        )
+    def updateBJ(self):
+        return(
+            (self.budget - self.Bused) / (self.nRaces - self.j + 1)
+        )
+
+    def initialRun(self):
+        print("running",self.nRaces, "iterated races")
+        self.j = 1
+        self.Bj = self.updateBJ()
+        sampleSize = self.getSampleSize()
+        indices = np.random.randint(1, len(self.grid) -1, size = sampleSize)
+        # populate initial set
+        initialSet = []
+        for i in indices:
+            initialSet.append(self.grid[i])
+            # create initial results:
+        f = self.features
+        L = self.labels
+        pars = {}
+        results = []
+        for row in range(len(initialSet)):
+            for column in range(len(self.names)):
+                pars[self.names[column]] = (initialSet[row][column])
+            clf = Classifier(self.method, pars)
+            print("calculating:",(row + 1),"out of:", len(initialSet))
+            scores = []
+            for ids,(train_index, test_index) in enumerate(self.sampler.method.split(f)):
+                X_train, X_test = f[train_index], f[test_index]
+                y_train, y_test = L[train_index], L[test_index]
+                clf.train(features = X_train, labels = y_train)
+                # I would like to get the clf.predict method working
+                preds = clf.predict(X_test)
+                scores.append(self.metric(preds, y_test))
+            res = sum(scores)/len(scores)
+            print(res)
+            results.append((row, res))
+        print(results)
+        # next, we want to do our statistical test to get the e l i t e ,
+
+
+
+
+#    def run(self):
+#        self.ran = True
+#
+#        pars = {}
+#
+#        f = self.features
+#        L = self.labels
+#        indices = np.random.randint(1, len(self.grid)-1, size = self.iters)
+#        for row in indices:
+#            for column in range(len(self.names)):
+#                pars[self.names[column]] = (self.grid[row][column])
+#            clf = Classifier(self.method, pars)
+#            clf()
+#            scores = []
+#            for ids,(train_index, test_index) in enumerate(self.sampler.method.split(f)):
+#                X_train, X_test = f[train_index], f[test_index]
+#                y_train, y_test = L[train_index], L[test_index]
+#                clf.train(features = X_train, labels = y_train)
+#                # I would like to get the clf.predict method working
+#                preds = clf.predict(X_test)
+#                scores.append(self.metric(preds, y_test))
+#            res = sum(scores)/len(scores)
+#            print(res)
+#            self.results.append(res)
+#        self.bestScore = max(self.results)
+#        self.bestTry = self.results.index(self.bestScore)
+#        for col in range(len(self.names)):
+#            self.bestPars[self.names[col]] = self.grid[self.bestTry][col]
+#
+#    def save(self, path = "randomSearch.obj"):
+#        filehandler = open(path,'wb')
+#        pickle.dump(self, filehandler)
+#
+#    def __call__(self):
+#        if(self.ran):
+#            return(self.method,
+#            self.names,
+#            self.grid,
+#             self.results,
+#                self.bestPars,
+#            self.bestScore)
+#        else:
+#            return(self.method,
+#            self.names,
+#            self.grid)
+#
+#    def print(self):
+#        if(self.ran):
+#            print("----------------------")
+#            print("model: ", self.method)
+#            print("----------------------")
+#            print("parameters: \n", self.names)
+#            print("----------------------")
+#            print("space:\n", self.grid)
+#            print("----------------------")
+#            print("results:\n", self.results)
+#            print("----------------------")
+#            print(
+#                "Best Paramter Set:",
+#                self.bestPars
+#            )
+#            print("----------------------")
+#            print(" Best Score:", self.bestScore)
+#        else:
+#            print("----------------------")
+#            print("model: ", self.method)
+#            print("----------------------")
+#            print("parameters: \n", self.names)
+#            print("----------------------")
+#            print("space:\n", self.grid)
+#            print("----------------------")
+#
+
+
+
+testCase =  tuneIrace(rf,
          X,
          Y,
-         cv, roc_auc_score,10,
+         cv, roc_auc_score,200,
          integerParam("nTrees", 1, 100, lambda x: 10*x),
          integerParam("depth", 1,20,transFun = lambda x: x**2)
             )
 
+testCase.initialRun()
 
 
 

@@ -69,3 +69,50 @@ t =  tuneGrid(rf,
          integerParam("nTrees", 1, 5, lambda x: 200*x),
          integerParam("depth", 2,7,transFun = lambda x: 2**x)
             )
+
+
+t.run()
+
+
+def tuneGrid(model, features, labels, sampling, *params):
+
+    # our default paramter test
+    print("testing baseline model")
+
+    for ids, (train_index, test_index) in enumerate(sampling.method.split(features, labels)):
+        model.train(features[train_index], labels[train_index])
+        pred = model.predict(features[test_index])
+
+    # save the method we are tuning with:
+    method = model.identity
+
+    # get the names of the hyperparameters we are tuning
+    names = list(map(getNames, params))
+
+    # instantiate an empty dict
+    d = {}
+
+    # set up the dict using the params
+    for p in params:
+        d[p.name] = p.values
+
+    # expand the dict into a list of tuples based on the keys
+    # I could not figure out how to save the name in the iteration process,
+    # this is my first time doing anything with classes, dicts, lists, or
+    # itertools that is remotely interesting or complex, so bear with me please
+    grid = list(itertools.product(*((d[i] )for i in (d))))
+
+    pars = {}
+
+    print("testing other models")
+    # turn it into a lovely list of dicts for our unpacking
+    for row in range(len(grid)):
+        for column in range(len(names)):
+            pars[names[column]] = (grid[row][column])
+        clf = Classifier(method, pars)
+        print("calculating:",(row))
+        print(pars)
+
+        for ids, (train_index, test_index) in enumerate(sampling.method.split(features, labels)):
+            clf.train(features[train_index], labels[train_index])
+            pred = clf.predict(features[test_index])

@@ -8,6 +8,7 @@ in
       python37
       python37Packages.numpy
       python37Packages.scikitlearn
+      python37Packages.scipy
       python37Packages.pip
       python37Packages.virtualenv
     ];
