@@ -9,6 +9,8 @@ import itertools
 import math
 from multiprocessing import Process, Queue
 import sklearn.datasets
+from operator import itemgetter as  itemget
+import scipy.stats as ss
 
 X,Y = sklearn.datasets.load_breast_cancer(return_X_y=True)
 
@@ -85,7 +87,8 @@ class Classifier:
     def predict(self,features):
         return(self.method.model.predict(features))
 
-rf = Classifier("RandomForest", hyperPars = {"nTrees":200, "seed":47})
+rf = Classifier("RandomForest", hyperPars = {"nTrees":200})
+
 
 
 
@@ -109,7 +112,7 @@ class Resampling:
     def __call__(self):
         print(self.method)
 
-cv = Resampling("cv", folds = 3, repeats = 5, seed = 47)
+cv = Resampling("cv", folds = 3, repeats = 5)
 # next lets make constructors for different hyperparameter sets, then we can
 # expand them into a grid or whatever
 
@@ -472,11 +475,13 @@ testCase =  tuneRandom(rf,
  see http://iridia.ulb.ac.be/IridiaTrSeries/link/IridiaTr2011-004.pdf
 '''
 
-
+# we are going to make a ranked quantile race, returning by default the top n
+# percentile
 class tuneIrace:
     mu = 1
-    def __init__(self,model, features, labels, sampling, metric, budget,*params):
+    def __init__(self,model, features, labels, sampling, metric, budget,*params, quantile = .50):
         self.method = model.identity
+        self.quantile = quantile
         self.metric = metric
         self.nRaces = math.ceil(2 + math.log(len(params),2))
         self.Bused = 0
@@ -509,6 +514,29 @@ class tuneIrace:
             (self.budget - self.Bused) / (self.nRaces - self.j + 1)
         )
 
+    def friedman(self, ranks, sampleSize):
+        Rj = sum(ranks)
+        k = self.j
+        m = sampleSize
+        numLHS = m-1
+        RHS = []
+        def numRHS(i):
+            return((Rj - (k * (i+1)/2))**2)
+        for i in range(m):
+           RHS.append(numRHS(i))
+        numerator = numLHS * sum(RHS)
+
+        denominator = []
+        predenominator = []
+        for l in range(k):
+            for j in range(m):
+                res = Rj**2 - (l*j*(j+1)**2)/4
+                predenominator.append(res)
+            denominator.append(sum(predenominator))
+        stat = (numerator/sum(denominator))
+        return(1-ss.chi2.cdf(stat, m-1))
+
+
     def initialRun(self):
         print("running",self.nRaces, "iterated races")
         self.j = 1
@@ -536,12 +564,21 @@ class tuneIrace:
                 clf.train(features = X_train, labels = y_train)
                 # I would like to get the clf.predict method working
                 preds = clf.predict(X_test)
+                self.Bused += 1
                 scores.append(self.metric(preds, y_test))
             res = sum(scores)/len(scores)
             print(res)
             results.append((row, res))
         print(results)
-        # next, we want to do our statistical test to get the e l i t e ,
+        scores = np.asarray([x[1] for x in results])
+        ranks = ss.rankdata(scores)
+        eliteIndices = np.where(ranks >= np.quantile(ranks, self.quantile))[0]
+        bestIndex = scores.argmax()
+        bestTry = initialSet[bestIndex]
+        elites = np.asarray(initialSet)[eliteIndices]
+        print(elites)
+        print(bestTry)
+        # plan: make a quantile
 
 
 
@@ -624,7 +661,7 @@ class tuneIrace:
 testCase =  tuneIrace(rf,
          X,
          Y,
-         cv, roc_auc_score,200,
+         cv, roc_auc_score,44,
          integerParam("nTrees", 1, 100, lambda x: 10*x),
          integerParam("depth", 1,20,transFun = lambda x: x**2)
             )
