@@ -622,7 +622,6 @@ class tuneIrace:
                         self.grid[row][column] = math.ceil(self.grid[row][column])
             self.grid = np.vstack(self.grid)
 
-            # first we race the fuckers, getting a new elite
             f = self.features
             L = self.labels
             pars = {}
