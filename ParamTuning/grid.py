@@ -539,8 +539,7 @@ class tuneIrace:
             denominator.append(sum(predenominator))
         stat = (numerator/sum(denominator))
         return(1-ss.chi2.cdf(stat, m-1))
-# also figure out this, for now do just using the best of each run as the
-# parent, with enough of a sample size it should work
+# also figure this thing out, for now just have  probability scale with rank
     def getRankProbs(self, initialSize,rank):
             numerator = (initialSize) - rank +1
             denominator = initialSize * (initialSize+1) /2
