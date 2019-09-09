@@ -1,6 +1,6 @@
 import numpy as np
 import pickle
-from sklearn.metrics import accuracy_score, roc_auc_score, classification_report # other metrics?
+from sklearn.metrics import accuracy_score, roc_auc_score, classification_report, f1_score # other metrics?
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import KFold, RepeatedKFold
 from sklearn.model_selection import StratifiedKFold
@@ -40,6 +40,7 @@ class classifRandomForest:
                  nodes = None,
                  bootstrap = True,
                  oob = False,
+                 impDecrease = 0.,
                  n_jobs = -1,
                  seed = None):
         self.model = RandomForestClassifier(n_estimators = nTrees,
@@ -52,6 +53,7 @@ class classifRandomForest:
                      max_leaf_nodes = nodes,
                      bootstrap = bootstrap,
                      oob_score = oob,
+                     min_impurity_decrease = impDecrease,
                      n_jobs = -1,
                      random_state = seed
                      )
@@ -149,12 +151,9 @@ class integerParam:
 
 
 class floatParam:
-    def __init__(self, name, lower, upper, by = 0.1, transFun = None):
+    def __init__(self, name, lower, upper, transFun):
         self.name = name
-        if(transFun == None):
-            self.values = ([i for i in np.arange(lower, upper+1, by, dtype = float)])
-        else:
-            self.values = ([transFun(i) for i in np.arange(lower, upper+1, by, dtype = float)])
+        self.values = ([transFun(i) for i in np.arange(lower, upper+1, dtype = float)])
     def __call__(self):
         print("param: ", self.name, "\nvalues: ", self.values)
 
@@ -307,6 +306,9 @@ class Tuner:
             print(tuner.bestPars)
             self.results.append(tuner)
 
+    def save(self, path = "mutiTuner.obj"):
+        filehandler = open(path,'wb')
+        pickle.dump(self, filehandler)
 
 
 t =  tuneGrid(rf,
@@ -508,6 +510,9 @@ class tuneIrace:
         self.eliteIndices = []
         self.bestPars = {}
         self.budget = budget
+    def save(self, path = "mutiTuner.obj"):
+        filehandler = open(path,'wb')
+        pickle.dump(self, filehandler)
     def getSampleSize(self):
         return(
             math.ceil(self.Bj / (self.mu + min(5, self.j)))
@@ -551,7 +556,7 @@ class tuneIrace:
         l = []
         for p in self.params:
             l.append(choices(p.values, k = sampleSize))
-        self.grid = list(map(list, zip(*l)))
+        self.grid = list(map(tuple, zip(*l)))
         #d = {}0
         #for p in self.params:
         #    d[p.name] = p.values
@@ -587,7 +592,7 @@ class tuneIrace:
         #print(results)
         self.scores = np.asarray([x[1] for x in results])
         self.ranks = ss.rankdata(scores)
-        self.eliteIndices = np.where(self.ranks >= np.mean(self.ranks) + 0.5*np.std(self.ranks))
+        self.eliteIndices = np.where(self.ranks >= np.mean(self.ranks) - 0.5*np.std(self.ranks))
         elites = np.asarray(initialSet)[self.eliteIndices].tolist()
         self.grid = elites
         #parentIndex = np.random.choice(eliteIndices[0], p = np.asarray([self.getRankProbs(len(0initialSet),x) for x in eliteRanks]))
@@ -608,19 +613,23 @@ class tuneIrace:
             print(len(self.grid[0]))
             parent = choices(self.grid, [x/(len(self.grid) + 1) for x in eliteRanks])
             sds = np.asarray(np.std(self.grid, axis = 0))
+
             for i in range(self.getSampleSize() - len(self.grid)):
                 val = (np.absolute(np.random.normal(parent,sds)).tolist())
                 valflat = list(itertools.chain(*val))
                 self.grid.append(valflat)
+            self.grid[:] = [tuple(l) for l in self.grid]
             print(self.grid)
 
             for row in range(len(self.grid)):
+                t = tuple()
                 for column in range(len(self.params)):
-
                     print(self.grid[row][column])
                     if (self.types[column] == True):
-                        self.grid[row][column] = math.ceil(self.grid[row][column])
-            self.grid = np.vstack(self.grid)
+                        t = (*t,int(math.ceil(self.grid[row][column])))
+                    else:
+                        t = (*t,self.grid[row][column])
+                self.grid[row] = t
 
             f = self.features
             L = self.labels
@@ -646,7 +655,7 @@ class tuneIrace:
             #print(results)
             self.scores = np.asarray([x[1] for x in results])
             self.ranks = ss.rankdata(scores)
-            self.eliteIndices = np.where(self.ranks >= np.mean(self.ranks) + np.std(self.ranks))
+            self.eliteIndices = np.where(self.ranks >= np.mean(self.ranks) - 0.5 * np.std(self.ranks))
             self.bestScore = self.scores[self.scores.argmax()]
             self.bestTry =self.scores.argmax()
             for col in range(len(self.names)):
@@ -750,32 +759,35 @@ class tuneIrace:
 randomCase =  tuneRandom(rf,
          X,
          Y,
-         cv, roc_auc_score,500,
+         cv, f1_score,44,
          integerParam("nTrees", 1, 100, lambda x: 10*x),
          integerParam("depth", 1,20,transFun = lambda x: x**2),
-                      integerParam("nodes", 1, 50, lambda x: 20*x)
+                      integerParam("nodes", 1, 100, lambda x: 10*x),
+                         floatParam("impDecrease", 0, 49, lambda x: x/100)
             )
 raceCase =  tuneIrace(rf,
          X,
          Y,
-         cv, roc_auc_score,500,
+         cv, f1_score,44,
          integerParam("nTrees", 1, 100, lambda x: 10*x),
          integerParam("depth", 1,20,transFun = lambda x: x**2),
-                      integerParam("nodes", 1, 50, lambda x: 20*x)
+                      integerParam("nodes", 1, 100, lambda x: 10*x),
+                         floatParam("impDecrease", 0, 49, lambda x: x/100)
             )
 raceCase.mu = 0.3
-
+raceCase.run()
 tune = Tuner(randomCase, raceCase)
 
 tune.run()
+tune.save
 #raceCase.run()
 
-#print(
-#    tune.results[0].bestScore
-#)
-#print(
-#    tune.results[1].bestScore
-#)
+print(
+    "random Search: ",tune.results[0].bestScore
+)
+print(
+    "Race: ",tune.results[1].bestScore
+)
 
 
 
