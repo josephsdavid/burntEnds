@@ -87,7 +87,7 @@ class Classifier:
     def predict(self,features):
         return(self.method.model.predict(features))
 
-rf = Classifier("RandomForest", hyperPars = {"nTrees":200})
+rf = Classifier("RandomForest", hyperPars = {"nTrees":200,"seed":69})
 
 
 
@@ -112,7 +112,7 @@ class Resampling:
     def __call__(self):
         print(self.method)
 
-cv = Resampling("cv", folds = 3, repeats = 5)
+cv = Resampling("cv", folds = 3, repeats = 5,seed = 69)
 # next lets make constructors for different hyperparameter sets, then we can
 # expand them into a grid or whatever
 
@@ -264,15 +264,7 @@ class tuneGrid:
 
 
 
-#t =  tuneGrid(rf,
-#         X,
-#         Y,
-#         cv, roc_auc_score,
-#         discreteParam("crit",["gini","entropy"]),
-#         integerParam("nTrees", 1, 2, lambda x: 200*x),
-#         integerParam("depth", 2,3,transFun = lambda x: 2**x)
-#            )
-#
+
 
 #t.run()
 #(t())
@@ -513,11 +505,11 @@ class tuneIrace:
         return(
             (self.budget - self.Bused) / (self.nRaces - self.j + 1)
         )
-
-    def friedman(self, ranks, sampleSize):
+    # figure out this
+    def friedman(self, ranks, sampleSize, space):
         Rj = sum(ranks)
-        k = self.j
-        m = sampleSize
+        k = sampleSize
+        m = len(space)
         numLHS = m-1
         RHS = []
         def numRHS(i):
@@ -530,11 +522,17 @@ class tuneIrace:
         predenominator = []
         for l in range(k):
             for j in range(m):
-                res = Rj**2 - (l*j*(j+1)**2)/4
+                res = Rj**2 - (l*j*((j+1)**2))/4
                 predenominator.append(res)
             denominator.append(sum(predenominator))
         stat = (numerator/sum(denominator))
         return(1-ss.chi2.cdf(stat, m-1))
+# also figure out this, for now do just using the best of each run as the
+# parent, with enough of a sample size it should work
+    def getRankProbs(self, eliteranks,rank):
+            numerator = len(eliteranks) - rank +2
+            denominator = len(eliteranks) * (len(eliteranks)+1) /2
+            return((numerator/denominator))
 
 
     def initialRun(self):
@@ -572,12 +570,31 @@ class tuneIrace:
         print(results)
         scores = np.asarray([x[1] for x in results])
         ranks = ss.rankdata(scores)
-        eliteIndices = np.where(ranks >= np.quantile(ranks, self.quantile))[0]
+        eliteIndices = np.where(ranks >= np.mean(ranks))
         bestIndex = scores.argmax()
-        bestTry = initialSet[bestIndex]
-        elites = np.asarray(initialSet)[eliteIndices]
+        parent = np.asarray(initialSet[bestIndex])
+        elites = np.asarray(initialSet)[eliteIndices].tolist()
+        eliteRanks = np.asarray(ranks)[eliteIndices]
+        sds = np.asarray(np.std(elites, axis = 0))
+       # parentIndex = np.random.choice(eliteIndices[0], p = np.asarray([self.getRankProbs(eliteRanks, x) for x in eliteRanks]))
+        #parent = elites[parentIndex]
+        #newBranch = [[np.absolute(np.random.normal(parent,sds))] for i in range(12)]
+        for i in range(12):
+            elites.append([np.absolute(np.random.normal(parent,sds))])
+
+        newSample = np.vstack(elites)
+
         print(elites)
-        print(bestTry)
+        print(eliteRanks)
+        print(parent)
+        print(np.shape(parent))
+        print(sds)
+        print(elites)
+        print(newSample)
+
+        # figure this out
+
+        #print(self.friedman(ranks, sampleSize, self.grid))
         # plan: make a quantile
 
 
