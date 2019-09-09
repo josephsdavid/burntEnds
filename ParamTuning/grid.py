@@ -483,10 +483,9 @@ testCase =  tuneRandom(rf,
 # percentile
 class tuneIrace:
     mu = 0.5
-    def __init__(self,model, features, labels, sampling, metric, budget,*params, quantile = .50):
+    def __init__(self,model, features, labels, sampling, metric, budget,*params):
         self.types = list(map(lambda x: x.isInt(), params))
         self.method = model.identity
-        self.quantile = quantile
         self.metric = metric
         self.nRaces = math.ceil(2 + math.log(len(params),2))
         self.Bused = 0
@@ -508,7 +507,6 @@ class tuneIrace:
         self.ranks = []
         self.eliteIndices = []
         self.bestPars = {}
-        self.results = []
         self.budget = budget
     def getSampleSize(self):
         return(
