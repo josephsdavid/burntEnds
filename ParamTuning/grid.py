@@ -5,6 +5,7 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import KFold, RepeatedKFold
 from sklearn.model_selection import StratifiedKFold
 from sklearn.linear_model import LogisticRegression
+from random import choices, sample
 import itertools
 import math
 from multiprocessing import Process, Queue
@@ -112,7 +113,7 @@ class Resampling:
     def __call__(self):
         print(self.method)
 
-cv = Resampling("cv", folds = 3, repeats = 5,seed = 69)
+cv = Resampling("cv", folds = 3, repeats = 5)
 # next lets make constructors for different hyperparameter sets, then we can
 # expand them into a grid or whatever
 
@@ -122,6 +123,8 @@ class discreteParam:
         self.values = values
     def __call__(self):
         print("param: ", self.name, "\nvalues: ", self.values)
+    def isInt(self):
+        return(False)
     def __iter__(self):
         return(self)
 
@@ -140,6 +143,9 @@ class integerParam:
     def __iter__(self):
         return(self)
 
+    def isInt(self):
+        return(True)
+
 
 
 class floatParam:
@@ -154,6 +160,11 @@ class floatParam:
 
     def __iter__(self):
         return(self)
+
+    def isInt(self):
+        return(False)
+
+
 
 
 def getNames(param):
@@ -282,7 +293,7 @@ l  = load("grid.obj")
 
 # model multiplexer
 
-class multiModelTuner:
+class Tuner:
     def __init__(self, *searches):
         tuners = []
         for s in searches:
@@ -292,8 +303,10 @@ class multiModelTuner:
     def run(self):
         for tuner in self.tuners:
             tuner.run()
+            print(tuner.bestScore)
+            print(tuner.bestPars)
             self.results.append(tuner)
-        print(self.results)
+
 
 
 t =  tuneGrid(rf,
@@ -313,7 +326,7 @@ r =  tuneGrid(rf,
          integerParam("depth", 2,6,transFun = lambda x: 2**x)
             )
 
-attempt = multiModelTuner(t,r)
+attempt = Tuner(t,r)
 #attempt.run()
 
 
@@ -333,12 +346,11 @@ class tuneRandom:
         self.features = features
         self.labels = labels
         self.sampler = sampling
-        d = {}
+
+        l = []
         for p in self.params:
-            d[p.name] = p.values
-        self.x = d
-        grid = list(itertools.product(*((d[i] )for i in (d))))
-        self.grid = grid
+            l.append(choices(p.values, k = iters))
+        self.grid = list(map(list, zip(*l)))
         self.ran = False
         self.bestTry = int(0)
         self.bestScore = float(0)
@@ -470,8 +482,9 @@ testCase =  tuneRandom(rf,
 # we are going to make a ranked quantile race, returning by default the top n
 # percentile
 class tuneIrace:
-    mu = 1
+    mu = 0.5
     def __init__(self,model, features, labels, sampling, metric, budget,*params, quantile = .50):
+        self.types = list(map(lambda x: x.isInt(), params))
         self.method = model.identity
         self.quantile = quantile
         self.metric = metric
@@ -485,15 +498,15 @@ class tuneIrace:
         self.features = features
         self.labels = labels
         self.sampler = sampling
-        d = {}
-        for p in self.params:
-            d[p.name] = p.values
-        self.x = d
-        grid = list(itertools.product(*((d[i] )for i in (d))))
-        self.grid = grid
+        self.grid = []
+        #self.grid = grid
+        #self.grid = list(map(tuple, zip(*l)))
         self.ran = False
         self.bestTry = int(0)
         self.bestScore = float(0)
+        self.scores = []
+        self.ranks = []
+        self.eliteIndices = []
         self.bestPars = {}
         self.results = []
         self.budget = budget
@@ -502,9 +515,8 @@ class tuneIrace:
             math.ceil(self.Bj / (self.mu + min(5, self.j)))
         )
     def updateBJ(self):
-        return(
-            (self.budget - self.Bused) / (self.nRaces - self.j + 1)
-        )
+        self.Bj = (self.budget - self.Bused) / (self.nRaces - self.j + 1)
+
     # figure out this
     def friedman(self, ranks, sampleSize, space):
         Rj = sum(ranks)
@@ -529,23 +541,31 @@ class tuneIrace:
         return(1-ss.chi2.cdf(stat, m-1))
 # also figure out this, for now do just using the best of each run as the
 # parent, with enough of a sample size it should work
-    def getRankProbs(self, eliteranks,rank):
-            numerator = len(eliteranks) - rank +2
-            denominator = len(eliteranks) * (len(eliteranks)+1) /2
+    def getRankProbs(self, initialSize,rank):
+            numerator = (initialSize) - rank +1
+            denominator = initialSize * (initialSize+1) /2
             return((numerator/denominator))
 
 
     def initialRun(self):
         print("running",self.nRaces, "iterated races")
-        self.j = 1
-        self.Bj = self.updateBJ()
+        self.updateBJ()
         sampleSize = self.getSampleSize()
-        indices = np.random.randint(1, len(self.grid) -1, size = sampleSize)
+        l = []
+        for p in self.params:
+            l.append(choices(p.values, k = sampleSize))
+        self.grid = list(map(list, zip(*l)))
+        #d = {}0
+        #for p in self.params:
+        #    d[p.name] = p.values
+        #self.x = d
+        #grid = list(itertools.product(*((d[i] )for i in (d))))
+        #indices = np.random.randint(1, len(self.grid) -1, size = sampleSize)
         # populate initial set
-        initialSet = []
-        for i in indices:
-            initialSet.append(self.grid[i])
-            # create initial results:
+        initialSet = self.grid
+        #for i in indices:
+        #    initialSet.append(self.grid[i])
+        #    # create initial results:
         f = self.features
         L = self.labels
         pars = {}
@@ -554,6 +574,7 @@ class tuneIrace:
             for column in range(len(self.names)):
                 pars[self.names[column]] = (initialSet[row][column])
             clf = Classifier(self.method, pars)
+            self.Bused += 1
             print("calculating:",(row + 1),"out of:", len(initialSet))
             scores = []
             for ids,(train_index, test_index) in enumerate(self.sampler.method.split(f)):
@@ -562,35 +583,90 @@ class tuneIrace:
                 clf.train(features = X_train, labels = y_train)
                 # I would like to get the clf.predict method working
                 preds = clf.predict(X_test)
-                self.Bused += 1
                 scores.append(self.metric(preds, y_test))
             res = sum(scores)/len(scores)
             print(res)
             results.append((row, res))
-        print(results)
-        scores = np.asarray([x[1] for x in results])
-        ranks = ss.rankdata(scores)
-        eliteIndices = np.where(ranks >= np.mean(ranks))
-        bestIndex = scores.argmax()
-        parent = np.asarray(initialSet[bestIndex])
-        elites = np.asarray(initialSet)[eliteIndices].tolist()
-        eliteRanks = np.asarray(ranks)[eliteIndices]
-        sds = np.asarray(np.std(elites, axis = 0))
-       # parentIndex = np.random.choice(eliteIndices[0], p = np.asarray([self.getRankProbs(eliteRanks, x) for x in eliteRanks]))
+        #print(results)
+        self.scores = np.asarray([x[1] for x in results])
+        self.ranks = ss.rankdata(scores)
+        self.eliteIndices = np.where(self.ranks >= np.mean(self.ranks) + 0.5*np.std(self.ranks))
+        elites = np.asarray(initialSet)[self.eliteIndices].tolist()
+        self.grid = elites
+        #parentIndex = np.random.choice(eliteIndices[0], p = np.asarray([self.getRankProbs(len(0initialSet),x) for x in eliteRanks]))
         #parent = elites[parentIndex]
         #newBranch = [[np.absolute(np.random.normal(parent,sds))] for i in range(12)]
-        for i in range(12):
-            elites.append([np.absolute(np.random.normal(parent,sds))])
+        self.j = 2
 
-        newSample = np.vstack(elites)
 
-        print(elites)
-        print(eliteRanks)
-        print(parent)
-        print(np.shape(parent))
-        print(sds)
-        print(elites)
-        print(newSample)
+
+    #call
+    def run(self):
+        self.initialRun()
+        while(self.Bused <= self.budget and self.j <= self.nRaces):
+            self.updateBJ()
+            eliteRanks = np.asarray(self.ranks)[self.eliteIndices]
+            worstIndex = self.scores[self.eliteIndices].argmin()
+            print(len(self.ranks))
+            print(len(self.grid[0]))
+            parent = choices(self.grid, [x/(len(self.grid) + 1) for x in eliteRanks])
+            sds = np.asarray(np.std(self.grid, axis = 0))
+            for i in range(self.getSampleSize() - len(self.grid)):
+                val = (np.absolute(np.random.normal(parent,sds)).tolist())
+                valflat = list(itertools.chain(*val))
+                self.grid.append(valflat)
+            print(self.grid)
+
+            for row in range(len(self.grid)):
+                for column in range(len(self.params)):
+
+                    print(self.grid[row][column])
+                    if (self.types[column] == True):
+                        self.grid[row][column] = math.ceil(self.grid[row][column])
+            self.grid = np.vstack(self.grid)
+
+            # first we race the fuckers, getting a new elite
+            f = self.features
+            L = self.labels
+            pars = {}
+            results = []
+            for row in range(len(self.grid)):
+                for column in range(len(self.names)):
+                    pars[self.names[column]] = (self.grid[row][column])
+                clf = Classifier(self.method, pars)
+                self.Bused += 1
+                print("calculating:",(row + 1),"out of:", len(self.grid))
+                scores = []
+                for ids,(train_index, test_index) in enumerate(self.sampler.method.split(f)):
+                    X_train, X_test = f[train_index], f[test_index]
+                    y_train, y_test = L[train_index], L[test_index]
+                    clf.train(features = X_train, labels = y_train)
+                    # I would like to get the clf.predict method working
+                    preds = clf.predict(X_test)
+                    scores.append(self.metric(preds, y_test))
+                res = sum(scores)/len(scores)
+                print(res)
+                results.append((row, res))
+            #print(results)
+            self.scores = np.asarray([x[1] for x in results])
+            self.ranks = ss.rankdata(scores)
+            self.eliteIndices = np.where(self.ranks >= np.mean(self.ranks) + np.std(self.ranks))
+            self.bestScore = self.scores[self.scores.argmax()]
+            self.bestTry =self.scores.argmax()
+            for col in range(len(self.names)):
+                self.bestPars[self.names[col]] = self.grid[self.bestTry][col]
+            self.grid = np.asarray(self.grid)[self.eliteIndices].tolist()
+            self.j += 1
+
+
+            #then we add a j
+
+            # update the grid
+
+            # then we do a new sample
+
+
+
 
         # figure this out
 
@@ -675,15 +751,36 @@ class tuneIrace:
 
 
 
-testCase =  tuneIrace(rf,
+randomCase =  tuneRandom(rf,
          X,
          Y,
-         cv, roc_auc_score,44,
+         cv, roc_auc_score,500,
          integerParam("nTrees", 1, 100, lambda x: 10*x),
-         integerParam("depth", 1,20,transFun = lambda x: x**2)
+         integerParam("depth", 1,20,transFun = lambda x: x**2),
+                      integerParam("nodes", 1, 50, lambda x: 20*x)
             )
+raceCase =  tuneIrace(rf,
+         X,
+         Y,
+         cv, roc_auc_score,500,
+         integerParam("nTrees", 1, 100, lambda x: 10*x),
+         integerParam("depth", 1,20,transFun = lambda x: x**2),
+                      integerParam("nodes", 1, 50, lambda x: 20*x)
+            )
+raceCase.mu = 0.3
 
-testCase.initialRun()
+tune = Tuner(randomCase, raceCase)
+
+tune.run()
+#raceCase.run()
+
+#print(
+#    tune.results[0].bestScore
+#)
+#print(
+#    tune.results[1].bestScore
+#)
+
 
 
 
