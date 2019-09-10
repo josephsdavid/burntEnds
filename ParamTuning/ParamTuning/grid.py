@@ -9,11 +9,11 @@ from random import choices, sample
 import itertools
 import math
 from multiprocessing import Process, Queue
-import sklearn.datasets
+#import sklearn.datasets
 from operator import itemgetter as  itemget
 import scipy.stats as ss
 
-X,Y = sklearn.datasets.load_breast_cancer(return_X_y=True)
+#X,Y = sklearn.datasets.load_breast_cancer(return_X_y=True)
 
 
 
@@ -42,7 +42,7 @@ class classifRandomForest:
                  oob_score = False,
                  min_impurity_decrease = 0.,
                  n_jobs = -1,
-                 seed = None):
+                 random_state = None):
         self.model = RandomForestClassifier(n_estimators = n_estimators,
                      criterion = criterion,
                      max_depth = max_depth,
@@ -55,7 +55,7 @@ class classifRandomForest:
                      oob_score = oob_score,
                      min_impurity_decrease = min_impurity_decrease,
                      n_jobs = -1,
-                     random_state = seed
+                     random_state = random_state
                      )
     def __call__(self):
         print(self.model)
@@ -90,7 +90,7 @@ class Classifier:
     def predict(self,features):
         return(self.method.model.predict(features))
 
-rf = Classifier("RandomForest", hyperPars = {"n_estimators":200,"seed":69})
+rf = Classifier("RandomForest", hyperPars = {"n_estimators":200,"random_state":69})
 
 
 
@@ -102,15 +102,15 @@ rf = Classifier("RandomForest", hyperPars = {"n_estimators":200,"seed":69})
 
 
 class Resampling:
-    def __init__(self, method, repeats = 10, folds = 5, stratify = False, seed = None):
+    def __init__(self, method, repeats = 10, folds = 5, stratify = False, random_state = None):
         if(stratify == False):
             if(method == "cv"):
-                self.method = KFold(n_splits = folds, random_state = seed)
+                self.method = KFold(n_splits = folds, random_state = random_state)
             elif(method == "repeatedcv"):
-                self.method = RepeatedKFold(n_splits = folds, n_repeats = repeats, random_state = seed)
+                self.method = RepeatedKFold(n_splits = folds, n_repeats = repeats, random_state = random_state)
         else:
             # does not work yet
-            self.method = StratifiedKFold(n_splits = folds, random_state = seed)
+            self.method = StratifiedKFold(n_splits = folds, random_state = random_state)
 
     def __call__(self):
         print(self.method)
@@ -310,24 +310,24 @@ class Tuner:
         pickle.dump(self, filehandler)
 
 
-t =  tuneGrid(rf,
-         X,
-         Y,
-         cv, roc_auc_score,
-         discreteParam("criterion",["gini","entropy"]),
-         integerParam("n_estimators", 1, 2, lambda x: 200*x),
-         integerParam("max_depth", 2,3,transFun = lambda x: 2**x)
-            )
-
-r =  tuneGrid(rf,
-         X,
-         Y,
-         cv, roc_auc_score,
-         integerParam("n_estimators", 2, 4, lambda x: 200*x),
-         integerParam("max_depth", 2,6,transFun = lambda x: 2**x)
-            )
-
-attempt = Tuner(t,r)
+#t =  tuneGrid(rf,
+#         X,
+#         Y,
+#         cv, roc_auc_score,
+#         discreteParam("criterion",["gini","entropy"]),
+#         integerParam("n_estimators", 1, 2, lambda x: 200*x),
+#         integerParam("max_depth", 2,3,transFun = lambda x: 2**x)
+#            )
+#
+#r =  tuneGrid(rf,
+#         X,
+#         Y,
+#         cv, roc_auc_score,
+#         integerParam("n_estimators", 2, 4, lambda x: 200*x),
+#         integerParam("max_depth", 2,6,transFun = lambda x: 2**x)
+#            )
+#
+#attempt = Tuner(t,r)
 #attempt.run()
 
 
@@ -434,13 +434,13 @@ class tuneRandom:
 
 
 
-testCase =  tuneRandom(rf,
-         X,
-         Y,
-         cv, roc_auc_score,10,
-         integerParam("n_estimators", 1, 100, lambda x: 10*x),
-         integerParam("max_depth", 1,20,transFun = lambda x: x**2)
-            )
+#testCase =  tuneRandom(rf,
+#         X,
+#         Y,
+#         cv, roc_auc_score,10,
+#         integerParam("n_estimators", 1, 100, lambda x: 10*x),
+#         integerParam("max_depth", 1,20,transFun = lambda x: x**2)
+#            )
 #testCase.run()
 
 #testCase.save()
@@ -751,37 +751,37 @@ class tuneIrace:
 
 
 
-randomCase =  tuneRandom(rf,
-         X,
-         Y,
-         cv, f1_score,500,
-         integerParam("n_estimators", 1, 100, lambda x: 10*x),
-         integerParam("max_depth", 1,20,transFun = lambda x: x**2),
-                      integerParam("max_leaf_nodes", 1, 100, lambda x: 10*x),
-                         floatParam("min_impurity_decrease", 0, 49, lambda x: x/100)
-            )
-raceCase =  tuneIrace(rf,
-         X,
-         Y,
-         cv, f1_score,500,
-         integerParam("n_estimators", 1, 100, lambda x: 10*x),
-         integerParam("max_depth", 1,20,transFun = lambda x: x**2),
-                      integerParam("max_leaf_nodes", 1, 100, lambda x: 10*x),
-                         floatParam("min_impurity_decrease", 0, 49, lambda x: x/100)
-            )
-raceCase.mu = 0.3
-tune = Tuner(raceCase, randomCase)
-
-tune.run()
-tune.save()
-#raceCase.run()
-
-print(
-    "random Search: ",tune.results[1].bestScore
-)
-print(
-    "Race: ",tune.results[0].bestScore
-)
+#randomCase =  tuneRandom(rf,
+#         X,
+#         Y,
+#         cv, f1_score,500,
+#         integerParam("n_estimators", 1, 100, lambda x: 10*x),
+#         integerParam("max_depth", 1,20,transFun = lambda x: x**2),
+#                      integerParam("max_leaf_nodes", 1, 100, lambda x: 10*x),
+#                         floatParam("min_impurity_decrease", 0, 49, lambda x: x/100)
+#            )
+#raceCase =  tuneIrace(rf,
+#         X,
+#         Y,
+#         cv, f1_score,500,
+#         integerParam("n_estimators", 1, 100, lambda x: 10*x),
+#         integerParam("max_depth", 1,20,transFun = lambda x: x**2),
+#                      integerParam("max_leaf_nodes", 1, 100, lambda x: 10*x),
+#                         floatParam("min_impurity_decrease", 0, 49, lambda x: x/100)
+#            )
+#raceCase.mu = 0.3
+#tune = Tuner(raceCase, randomCase)
+#
+#tune.run()
+#tune.save()
+##raceCase.run()
+#
+#print(
+#    "random Search: ",tune.results[1].bestScore
+#)
+#print(
+#    "Race: ",tune.results[0].bestScore
+#)
 
 
 

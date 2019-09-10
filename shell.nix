@@ -11,6 +11,8 @@ in
       python37Packages.scipy
       python37Packages.pip
       python37Packages.virtualenv
+      python37Packages.matplotlib
+      python37Packages.seaborn
     ];
    shellHook = ''
       '';
