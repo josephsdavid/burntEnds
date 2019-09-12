@@ -124,7 +124,7 @@ random =  pt.tuneRandom(rf,
 random.run()
 ```
 
-In this case, we will have 500 random samples of our grid search.
+In this case, we will have 1000 random samples of our grid search.
 
 
 ### Iterated Racing (work in progress, near completion)
