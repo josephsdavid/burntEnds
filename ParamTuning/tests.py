@@ -17,10 +17,14 @@ raceCase =  pt.tuneIrace(rf,
          pt.integerParam("max_leaf_nodes", 1, 100, lambda x: 10*x),
          pt.floatParam("min_impurity_decrease", 0, 49, lambda x: x/100)
             )
-raceCase.mu = 0.1
-raceCase.run()
+raceCase.mu = 0.05
+#raceCase.run()
 
-raceCase.save()
+#raceCase.save()
+
+rfRace = pt.load("race.obj")
+
+
 
 bestClass = pt.Classifier("RandomForest", hyperPars = raceCase.bestPars)
 

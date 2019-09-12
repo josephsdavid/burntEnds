@@ -1,10 +1,16 @@
 import numpy as np
 import pickle
-from sklearn.metrics import accuracy_score, roc_auc_score, classification_report, f1_score # other metrics?
-from sklearn.ensemble import RandomForestClassifier
+from sklearn.ensemble import RandomForestClassifier, AdaBoostClassifier
 from sklearn.model_selection import KFold, RepeatedKFold
 from sklearn.model_selection import StratifiedKFold
 from sklearn.linear_model import LogisticRegression
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.svm import SVC
+from sklearn.gaussian_process import GaussianProcessClassifier
+from sklearn.gaussian_process.kernels import RBF
+from sklearn.naive_bayes import GaussianNB
+from sklearn.neural_network import MLPClassifier
+from sklearn.discriminant_analysis import QuadraticDiscriminantAnalysis
 from random import choices, sample
 import itertools
 import math
@@ -28,6 +34,31 @@ import scipy.stats as ss
 # so we will redefine the classifiers (these are hidden) to have reasonable
 # values. Mostly the n_estimators, as well as for example the regularization defaults
 # in logistic regression
+
+class classifLogisticRegression:
+    def __init__(self, penalty = "none",
+                 dual = False, tol = 0.0001, C = 1, fit_intercept = True,
+                 intercept_scaling = 1, class_weight = None,
+                 random_state = None, solver = 'liblinear', max_iter = 100,
+                 multi_class = 'ovr', verbose = 0, n_jobs = -1, l1_ratio =  None):
+        self.model = RandomForestClassifier(penalty = penalty,
+                                            dual = dual,
+                                            tol = tol,
+                                            C = C,
+                                            fit_intercept = fit_intercept,
+                                            intercept_scaling = intercept_scaling,
+                                            class_weight = class_weight,
+                                            random_state = random_state,
+                                            solver = solver,
+                                            max_iter = max_iter,
+                                            multi_class = multi_class,
+                                            verbose = verbose,
+                                            n_jobs = n_jobs,
+                                            l1_ratio = l1_ratio
+                     )
+    def __call__(self):
+        print(self.model)
+
 class classifRandomForest:
     def __init__(self,
                  n_estimators = 100,
@@ -73,11 +104,16 @@ class Classifier:
     # make a classifier class, instantiate it with default hyperparameters
     def __init__(self, method, hyperPars = {}):
         self.identity = method
-        if (method == "RandomForest"):
-            if (hyperPars == {}):
+        if (method == "randomforest"):
+            if (hyperpars == {}):
                 self.method = classifRandomForest()
             else:
-                self.method = classifRandomForest(**hyperPars)
+                self.method = classifRandomForest(**hyperpars)
+        elif (method == "logisticregression" or method == "logreg"):
+            if (hyperpars == {}):
+                self.method = classifLogisticRegression()
+            else:
+                self.method = classifLogisticRegression(**hyperpars)
 
     # call method
     def __call__(self):
@@ -494,7 +530,7 @@ class tuneRandom:
 # we are going to make a ranked quantile race, returning by default the top n
 # percentile
 class tuneIrace:
-    mu = 0.5
+    mu = 0.1
     def __init__(self,model, features, labels, sampling, metric, budget,*params):
         self.types = list(map(lambda x: x.isInt(), params))
         self.method = model.identity
