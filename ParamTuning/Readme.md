@@ -208,7 +208,7 @@ rfRace = pt.load("race.obj")
 
 ### Visualising
 
-
+See tests.py for simple visualization example
 
 
 

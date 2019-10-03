@@ -8,7 +8,7 @@ from sklearn.metrics import accuracy_score, roc_auc_score, classification_report
 X,Y = sklearn.datasets.load_breast_cancer(return_X_y=True)
 
 # define sampling
-cv = pt.Resampling("cv", folds = 3)
+cv = pt.Resampling("repeatedcv", folds = 3, repeats = 10)
 
 # define classifiers
 rf = pt.Classifier("randomforest", hyperPars = {"random_state":34})
