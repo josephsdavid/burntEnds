@@ -35,13 +35,14 @@ import scipy.stats as ss
 # values. Mostly the n_estimators, as well as for example the regularization defaults
 # in logistic regression
 
+# logistic regression class
 class classifLogisticRegression:
     def __init__(self, penalty = "none",
                  dual = False, tol = 0.0001, C = 1, fit_intercept = True,
                  intercept_scaling = 1, class_weight = None,
                  random_state = None, solver = 'liblinear', max_iter = 100,
                  multi_class = 'ovr', verbose = 0, n_jobs = -1, l1_ratio =  None):
-        self.model = RandomForestClassifier(penalty = penalty,
+        self.model = LogisticRegression(penalty = penalty,
                                             dual = dual,
                                             tol = tol,
                                             C = C,
@@ -59,6 +60,7 @@ class classifLogisticRegression:
     def __call__(self):
         print(self.model)
 
+# Random Forest Class
 class classifRandomForest:
     def __init__(self,
                  n_estimators = 100,
@@ -100,25 +102,27 @@ class classifRandomForest:
 
 #print(rf())
 
+# classifier class
 class Classifier:
     # make a classifier class, instantiate it with default hyperparameters
     def __init__(self, method, hyperPars = {}):
         self.identity = method
         if (method == "randomforest"):
-            if (hyperpars == {}):
+            if (hyperPars == {}):
                 self.method = classifRandomForest()
             else:
-                self.method = classifRandomForest(**hyperpars)
+                self.method = classifRandomForest(**hyperPars)
         elif (method == "logisticregression" or method == "logreg"):
-            if (hyperpars == {}):
+            if (hyperPars == {}):
                 self.method = classifLogisticRegression()
             else:
-                self.method = classifLogisticRegression(**hyperpars)
+                self.method = classifLogisticRegression(**hyperPars)
 
     # call method
     def __call__(self):
         print("model: ",self.method.model)
 
+# training method
     def train(self,features, labels):
         self.method.model.fit(features, labels)
 
@@ -136,7 +140,7 @@ rf = Classifier("RandomForest", hyperPars = {"n_estimators":200,"random_state":6
 # Next we need to make a few cross validation functions. We will do
 # cross validation, stratified cross validation, and repeated cross validation
 
-
+# resampling class
 class Resampling:
     def __init__(self, method, repeats = 10, folds = 5, stratify = False, random_state = None):
         if(stratify == False):
@@ -152,6 +156,7 @@ class Resampling:
         print(self.method)
 
 cv = Resampling("cv", folds = 3, repeats = 5)
+
 # next lets make constructors for different hyperparameter sets, then we can
 # expand them into a grid or whatever
 
@@ -226,6 +231,7 @@ class tuneGrid:
         self.x = d
         grid = list(itertools.product(*((d[i] )for i in (d))))
         self.grid = grid
+        self.dtool = {}
         self.ran = False
         self.bestTry = int(0)
         self.bestScore = float(0)
@@ -262,6 +268,8 @@ class tuneGrid:
         for col in range(len(self.names)):
             self.bestPars[self.names[col]] = self.grid[self.bestTry][col]
 
+        for i in range(len(self.names)):
+            self.dtool[self.names[i]] = [item[i] for item in self.grid]
     def save(self, path = "grid.obj"):
         filehandler = open(path,'wb')
         pickle.dump(self, filehandler)
@@ -359,8 +367,8 @@ class Tuner:
 #         X,
 #         Y,
 #         cv, roc_auc_score,
-#         integerParam("n_estimators", 2, 4, lambda x: 200*x),
-#         integerParam("max_depth", 2,6,transFun = lambda x: 2**x)
+#         integerParam("n_estimators", 2, 5, lambda x: 200*x),
+#         integerParam("max_depth", 2,10,transFun = lambda x: 2**x)
 #            )
 #
 #attempt = Tuner(t,r)
@@ -393,11 +401,13 @@ class tuneRandom:
         self.bestScore = float(0)
         self.bestPars = {}
         self.results = []
+        self.dtool = {}
         self.iters = iters
     def run(self):
         self.ran = True
 
         pars = {}
+        plist = []
 
         f = self.features
         L = self.labels
@@ -405,7 +415,9 @@ class tuneRandom:
         for row in indices:
             for column in range(len(self.names)):
                 pars[self.names[column]] = (self.grid[row][column])
+
             clf = Classifier(self.method, pars)
+
             clf()
             scores = []
             for ids,(train_index, test_index) in enumerate(self.sampler.method.split(f)):
@@ -420,6 +432,12 @@ class tuneRandom:
             self.results.append(res)
         self.bestScore = max(self.results)
         self.bestTry = self.results.index(self.bestScore)
+        # ignore dtool
+
+        for i in range(len(self.names)):
+            self.dtool[self.names[i]] = [item[i] for item in plist]
+
+
         for col in range(len(self.names)):
             self.bestPars[self.names[col]] = self.grid[self.bestTry][col]
 
@@ -556,7 +574,7 @@ class tuneIrace:
         self.eliteIndices = []
         self.bestPars = {}
         self.budget = budget
-    def save(self, path = "mutiTuner.obj"):
+    def save(self, path = "iRace.obj"):
         filehandler = open(path,'wb')
         pickle.dump(self, filehandler)
     def getSampleSize(self):
@@ -638,8 +656,6 @@ class tuneIrace:
             self.updateBJ()
             eliteRanks = np.asarray(self.ranks)[self.eliteIndices]
             worstIndex = self.scores[self.eliteIndices].argmin()
-            print(len(self.ranks))
-            print(len(self.grid[0]))
             parent = choices(self.grid, [x/(len(self.grid) + 1) for x in eliteRanks])
             sds = np.asarray(np.std(self.grid, axis = 0))
 
@@ -648,12 +664,10 @@ class tuneIrace:
                 valflat = list(itertools.chain(*val))
                 self.grid.append(valflat)
             self.grid[:] = [tuple(l) for l in self.grid]
-            print(self.grid)
 
             for row in range(len(self.grid)):
                 t = tuple()
                 for column in range(len(self.params)):
-                    print(self.grid[row][column])
                     if (self.types[column] == True):
                         t = (*t,int(math.ceil(self.grid[row][column])))
                     else:
@@ -710,80 +724,6 @@ class tuneIrace:
         # plan: make a quantile
 
 
-
-
-#    def run(self):
-#        self.ran = True
-#
-#        pars = {}
-#
-#        f = self.features
-#        L = self.labels
-#        indices = np.random.randint(1, len(self.grid)-1, size = self.iters)
-#        for row in indices:
-#            for column in range(len(self.names)):
-#                pars[self.names[column]] = (self.grid[row][column])
-#            clf = Classifier(self.method, pars)
-#            clf()
-#            scores = []
-#            for ids,(train_index, test_index) in enumerate(self.sampler.method.split(f)):
-#                X_train, X_test = f[train_index], f[test_index]
-#                y_train, y_test = L[train_index], L[test_index]
-#                clf.train(features = X_train, labels = y_train)
-#                # I would like to get the clf.predict method working
-#                preds = clf.predict(X_test)
-#                scores.append(self.metric(preds, y_test))
-#            res = sum(scores)/len(scores)
-#            print(res)
-#            self.results.append(res)
-#        self.bestScore = max(self.results)
-#        self.bestTry = self.results.index(self.bestScore)
-#        for col in range(len(self.names)):
-#            self.bestPars[self.names[col]] = self.grid[self.bestTry][col]
-#
-#    def save(self, path = "randomSearch.obj"):
-#        filehandler = open(path,'wb')
-#        pickle.dump(self, filehandler)
-#
-#    def __call__(self):
-#        if(self.ran):
-#            return(self.method,
-#            self.names,
-#            self.grid,
-#             self.results,
-#                self.bestPars,
-#            self.bestScore)
-#        else:
-#            return(self.method,
-#            self.names,
-#            self.grid)
-#
-#    def print(self):
-#        if(self.ran):
-#            print("----------------------")
-#            print("model: ", self.method)
-#            print("----------------------")
-#            print("parameters: \n", self.names)
-#            print("----------------------")
-#            print("space:\n", self.grid)
-#            print("----------------------")
-#            print("results:\n", self.results)
-#            print("----------------------")
-#            print(
-#                "Best Paramter Set:",
-#                self.bestPars
-#            )
-#            print("----------------------")
-#            print(" Best Score:", self.bestScore)
-#        else:
-#            print("----------------------")
-#            print("model: ", self.method)
-#            print("----------------------")
-#            print("parameters: \n", self.names)
-#            print("----------------------")
-#            print("space:\n", self.grid)
-#            print("----------------------")
-#
 
 
 
