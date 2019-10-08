@@ -629,6 +629,7 @@ class tuneIrace:
         for row in range(len(initialSet)):
             for column in range(len(self.names)):
                 pars[self.names[column]] = (initialSet[row][column])
+            print(pars)
             clf = Classifier(self.method, pars)
             self.Bused += 1
             print("calculating:",(row + 1),"out of:", len(initialSet))
@@ -682,6 +683,7 @@ class tuneIrace:
                 for column in range(len(self.names)):
                     pars[self.names[column]] = (self.grid[row][column])
                 clf = Classifier(self.method, pars)
+                print(pars)
                 self.Bused += 1
                 print("calculating:",(row + 1),"out of:", len(self.grid))
                 scores = []
