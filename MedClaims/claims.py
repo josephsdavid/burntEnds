@@ -1,4 +1,5 @@
 import csv
+from sklearn.ensemble import RandomForestRegressor
 import seaborn as sns
 import matplotlib.pyplot as plt
 import re
@@ -325,28 +326,101 @@ X = np.hstack(list(x.values()))
 # Just a well tuned random forest. Obviously we will have to deal with the
 # horrific class imbalance but lets see how we do right off the bat:
 
-rf = pt.Classifier("randomforest")
+rf = pt.Classifier("randomforest", hyperPars = {"random_state": 42})
 cv = pt.Resampling("cv", folds = 3)
 
 from sklearn.metrics import roc_auc_score, f1_score
 
 from yellowbrick.classifier import ClassificationReport
 
-rfRace = pt.tuneIrace(rf,
-                      X,
-                      Y,
-                      cv, f1_score, 500,
-                       pt.integerParam("n_estimators", 1, 100, lambda x: 10*x),
-         pt.integerParam("max_depth", 1,20,transFun = lambda x: x**2),
-                      pt.integerParam("max_leaf_nodes", 1, 100, lambda x: 10*x),
-                         pt.floatParam("min_impurity_decrease", 0, 49, lambda x: x/100))
+#rfRace = pt.tuneIrace(rf,
+#                      X,
+#                      Y,
+#                      cv, f1_score, 500,
+#                       pt.integerParam("n_estimators", 1, 100, lambda x: 10*x),
+#         pt.integerParam("max_depth", 1,20,transFun = lambda x: x**2),
+#                      pt.integerParam("max_leaf_nodes", 1, 100, lambda x: 10*x),
+#                         pt.floatParam("min_impurity_decrease", 0, 49, lambda x: x/100))
+#
+#rfRace.mu = 0.05
+#
+#rfRace.run()
+#rfRace.save()
 
-rfRace.mu = 0.05
+#rfRace = pt.load("race.obj")
+#
+#rfGrid = pt.tuneGrid(
+#    rf,
+#    X,
+#    Y,
+#    cv,
+#    f1_score,
+#    pt.integerParam("n_estimators", 1,10, lambda x: 100*x),
+#    pt.floatParam("max_features", 1,5, lambda x: x/10)
+#)
+#
+#rfGrid.run()
+#rfGrid.save()
+g = pt.load("grid.obj")
 
-rfRace.run()
-rfRace.save()
+
+def mkdict(tuner):
+    arr = np.array(tuner.grid)
+    print(arr)
+    d = {}
+    for col in range(len(tuner.names)):
+        d[tuner.names[col]] = list(arr[:,col])
+    return(d)
+def plotPars(obj):
+
+    forest = pt.Classifier("randomforest", hyperPars = {"random_state":34})
+    d = mkdict(obj)
+    metric = obj.metric
+    scores = obj.results
+    names = list(d.keys())
+    rd = {}
+    # regression to figure out relationship between single hyperparameter
+    for n in names:
+        r = RandomForestRegressor(random_state = 6)
+        r.fit(X = np.array(d[n]).reshape(-1,1), y = scores)
+        p = r.predict((np.array(np.unique(d[n])).reshape(-1,1)))
+        rd[n] = list(p)
+
+    for n in names:
+        plt.figure()
+        plt.plot(np.unique(d[n]), rd[n])
+        plt.plot(d[n], scores, 'o')
+        plt.title(n)
+    plt.show()
+# kind of ugly but does the trick
+print(g.bestPars)
+#plotPars(g)
+
+clf = pt.Classifier("randomforest",{"n_estimators":400, "max_features": 0.1})
 
 
 
+#scores = []
+#for ids,(train_index, test_index) in enumerate(cv.method.split(X)):
+#    X_train, X_test = X[train_index], X[test_index]
+#    y_train, y_test = Y[train_index], Y[test_index]
+#    clf.train(features = X_train, labels = y_train)
+#                # I would like to get the clf.predict method working
+#    preds = clf.predict(X_test)
+#
+#    scores.append(f1_score(preds, y_test))
+#
+#print(scores)
 
 
+from sklearn.model_selection import train_test_split
+
+X_train, X_test, y_train, y_test = train_test_split(X, Y, test_size = 0.33, random_state = 42)
+
+visualizer = ClassificationReport(clf.method.model, support = True)
+
+visualizer.fit(X_train, y_train)
+
+visualizer.score(X_test, y_test)
+
+visualizer.show()
