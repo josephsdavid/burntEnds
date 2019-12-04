@@ -1,14 +1,72 @@
+---
+title: "Model Agnostic Variable Importance"
+author: "David Josephs"
+date: "`r Sys.Date()`"
+output: 
+        revealjs::revealjs_presentation:
+          df_print: paged
+          theme: serif
+          transition: concave
+          self_contained: false
+          reveal_plugins: ["chalkboard"]
+          reveal_options:
+            chalkboard:
+              theme: whiteboard
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+library(reticulate)
+library(tidyverse)
+library(magick)
+```
+
+# Black Box ML {data-background-video="bbox.mp4" data-background-video-loop="loop"}
+
+## Who Cares?
+
+>* Black Box Models Get Good Results
+>   * Forests
+>   * Boosting
+>   * NNs
+>   * SVMs
+>   * The rest
+>* Some applications just aren't possible for classical stats
+>   * Image classification
+>   * Text related things
+>   * (Arguably) anomaly detection and complex time series
+
+## Why Care?
+
+>- Bias
+>- Widespread Acceptance of ML
+
+## Myths
+
+>* Interpretable models must sacrifice accuracy
+>   * FICO competition  
+>* **Complex models have to be black boxes**
+
+# Tools For Interpretability 
+
+```{r, echo = F}
+knitr::include_graphics("Tools.jpg")
+```
+
+```{python, echo = F, message = F, warn = F, include = F}
 import seaborn as sns
 from sklearn.linear_model import LinearRegression
 from sklearn.neighbors import KNeighborsRegressor
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.datasets import load_boston, fetch_california_housing
 import matplotlib.pyplot as plt
+plt.rcParams.update({'figure.max_open_warning': 0})
 import numpy as np
 import pandas as pd
 import math
 import statistics as stats
 import matplotlib.cm as cm
+from sklearn.metrics import mean_squared_error as loss_mse
 
 cruise = pd.read_csv("https://github.com/bot13956/ML_Model_for_Predicting_Ships_Crew_Size/raw/master/cruise_ship_info.csv")
 
@@ -19,7 +77,6 @@ X = cruise.loc[:, cruise.columns != "crew"]
 X = X.loc[:, X.columns != "Ship_name"]
 X = X.loc[:, X.columns != "Cruise_line"]
 y = cruise.loc[:, cruise.columns == "crew"]
-
 
 def split(df, p_train = 0.75, random_state = 0):
     train = df.sample(frac = p_train, random_state = random_state)
@@ -34,16 +91,6 @@ rf = RandomForestRegressor(n_estimators = 100)
 mods = [lm, knn, rf]
 for m in mods:
     m.fit(X_train, y_train)
-
-rf.feature_importances_
-X_train.columns[rf.feature_importances_ > 0.3 ]
-
-from sklearn.metrics import mean_squared_error as loss_mse
-
-loss_mse(y_test, lm.predict(X_test))
-loss_mse(y_test, rf.predict(X_test))
-
-
 
 
 def permutation_importance(model, x, y, loss, base = False, x_train = None, y_train = None, kind = "prop", n_rounds = 5):
@@ -75,9 +122,6 @@ def permutation_importance(model, x, y, loss, base = False, x_train = None, y_tr
                 res["baseline"].append(loss(y, mod2.predict(x_temp)) /  baseline)
     return(pd.DataFrame.from_dict(res))
 
-
-permutation_importance(lm, X_test, y_test, loss_mse, True,  X_train, y_train)
-
 def get_name(obj):
     name =[x for x in globals() if globals()[x] is obj][0]
     return(name)
@@ -85,8 +129,6 @@ def get_name(obj):
 imps = {}
 for m in mods:
     imps[get_name(m)] = permutation_importance(m, X_test, y_test, loss_mse, True,  X_train, y_train, n_rounds = 5)
-
-
 
 plt.style.use("seaborn-whitegrid")
 
@@ -107,6 +149,70 @@ def plot(df, ax = None, color = 'blue'):
                          arrowprops = dict(facecolor = 'black',
                                            shrink = 0.05),
                          bbox = dict(boxstyle = "square", fc = (1,1,1)))
+```
+
+## Instance Based Tools
+
+>* Ceteris Paribus(what-if), Break-Down, SHAP, LIME
+
+```{r, echo = F}
+cp <- image_read("cp.png") 
+bd <- image_read("bdp.png") %>% image_scale("x400") 
+image_append(c(cp, bd))
+```
+
+## Global Tools
+
+>* Partial Dependency
+>* Variable Importance!
+
+# Model Free Variable Importance
+
+```{r, echo = F}
+knitr::include_graphics("galaxybrain.jpg")
+```
+
+# Permutation Importance
+
+> If I replace a feature with noise, how much worse will my model be?
+
+## Formulation
+
+>* Let $\mathcal{L}$ be loss with original $k$ features, $[x_1 ... x_k]$
+>* Let $x^*_i$ be a permutation of $x_i$, equivalent to noisy sample of marginal probability distribution of $x_i$
+
+```{r, echo = F, out.height = 400, out.width = 600}
+knitr::include_graphics("marginal.png")
+```
+
+## Formulation
+
+* Let $\mathcal{L}\left(x^*_i\right) = \mathcal{L}^*(i)$ be the new loss
+$$ VIP \left(x_i\right) = \frac{\mathcal{L}^*(i)}{\mathcal{L}}$$ 
+
+## Algorithm
+
+> Fit Black box model $\mathcal{f}$ to $\vec{x}$
+>
+> Calculate $\mathcal{L}$
+>
+> For $i$ in $0 \rightarrow k$
+>
+> > replace $x_i$ with $x^*_i$
+>
+> > $\vec{(VIP)_i} = VIP(x_i)$ 
+
+## Useful tip
+
+It is hard to tell when you have mostly useful features. Therefore, it is advisable to create a new dataset with just regularized noise as an additional feature, as a baseline
+
+## Visualization
+
+```{r, echo = F, eval = F}
+image_read("cruise_pvimp.png") %>% image_scale("x600") 
+```
+
+```{python, echo = F}
 
 fig = plt.figure()
 for i in range(len(imps.keys())):
@@ -116,8 +222,60 @@ for i in range(len(imps.keys())):
     plot(imps[list(imps.keys())[i]], ax = ax, color = c)
     ax.set_title(list(imps.keys())[i])
 plt.show()
+```
+
+## Pros and Cons
+
+>- Fast
+>- Simple
+>- Invalid data points in case of correlation
+
+# Partial Dependency Importance
+
+## Partial Dependency Profiles
+
+>- Average Prediction from model given a single variable
+>- "All else equal" prediction
+
+## Formulation: Setup
+
+- Consider a given set of features, $\left\{x_1 .. x_k \right\}$, a black box prediction function $\hat{\mathcal{f}}(\mathbf{x})$
+- Let $z_s$ represent an interest set within x, $x_i$, and $z_c$, its complement
+* We can then define $\mathcal{f}\left(z_s\right)$, the true partial dependence of the function response on $z_s$ as:
+
+$$
+f(z_s) = E\left[ \hat{f} (z_s, z_c) \right | z_c]  
+$$
 
 
+## Formulation:
+$$
+E\left[ \hat{f} (z_s, z_c) \right | z_c] = \int \hat{f} (z_s, z_c) p_c(z_c)dz_c
+$$
+
+Where $p_c$ is marginal probability distribution of $z_c$, $\int p(x) dz_s$
+
+>- We can sample this, yielding $$ 
+\widetilde{f}_s(z_s) = \frac{1}{n}\sum_{i=1}^{i=k} \hat{f}(z_s,z_{i,c})
+$$
+>- Average away all other predictors
+
+## Algorithm
+
+Assume we want to know partial dependency of $\hat f$ on $x_n$, with values $x_{n1}, x_{n2}, ..., x_{np}$
+
+> for $i \in {1,...,p}$
+>
+> > Copy entire set and replace all values of $x_n$ with $x_{ni}$
+>
+> > Compute all predicted values
+>
+> > Average all predictions to obtain $\widetilde f_i(x_{ni})$
+>
+
+## Visualization
+
+```{python, echo = F}
 def _normalize(x):
     num = x-x.min()
     den = x.max() - x.min()
@@ -141,7 +299,6 @@ def pdp_var(model, x, var):
 def pdp_df(model, x):
     res = {}
     for c in X.columns:
-        print("calculating pdp for:" + get_name(model) + " column:" + c)
         d = pd.DataFrame()
         d["Value"], d["Average Prediction"] = pdp_var(model, X_test, c)
         res[c] = d
@@ -171,6 +328,21 @@ for k in range(0,len(attempt.keys())):
 plt.subplots_adjust(wspace = 0.5, hspace = 0.5)
 plt.show()
 
+```
+
+Note scale
+
+## Relation to Importance
+
+>- Flat variables unimportant
+>- What metric exists for "unflatness"????
+>- Standard deviation!! 
+>- Or range($\mathrm{pdp}$)/$n_\mathrm{categories}$
+
+## Importance!
+
+```{python, echo = F}
+
 def plot_pdp_imp(d, ax = None, color = "blue"):
     df = pd.DataFrame()
     df["Variable"] = d.keys()
@@ -185,12 +357,27 @@ for i in range(len(pdp_imps.keys())):
     plot_pdp_imp(pdp_imps[list(pdp_imps.keys())[i]], ax = ax, color = c)
     ax.set_title(list(pdp_imps.keys())[i])
 plt.show()
+```
 
-# note the failure of pdp Because of correlation
+## Problems
 
-## ICE land
+>- Even more susceptible to correlated features than permutation importance
+>- Invalid data points
 
+# Individual Conditional Expectation (ICE) Curves
 
+>- Partial Dependence use marginal, independent probability distributions
+>- This can obscure any more interesting, interactive effects
+
+## Formulation
+
+* Very simple: do just as you do with PDP, but without averaging
+* For each instance in the set $\left\{\left(x_S^i, x_C^i\right)\right\}^N_{i=1}$:
+  * plot curve $\hat{f}^{(i)}_S$, where $x_S^{(i)}$ is changing and $x_C^{(i)}$ is fixed
+
+## ICE plots
+
+```{python, echo = F}
 def ICE_var(model, x, var):
     explan = sorted(x[var])
     med = explan
@@ -205,24 +392,17 @@ def ICE_var(model, x, var):
     preds = np.asarray(preds).reshape(len(x), len(explan))
     return(explan, preds)
 
-iceEx, icetempt = ICE_var(rf, X, "Tonnage")
-icetempt.shape
-
-iceEx[0]
 
 def plotICE(ex, values, ax = None):
     mid = math.floor((len(ex))/2)
-    for i in range(0, len(iceEx)):
+    for i in range(0, len(ex)):
         if (ax is None):
             plt.plot(ex,values[mid,:] - values[i,:], 'black', alpha = 0.1)
-            plt.plot(ex, values[mid,:] - values.mean(0), "orange", alpha = 0.6)
+            plt.plot(ex, values[mid,:] - values.mean(0), "cyan", alpha = 0.6)
         else:
             ax.plot(ex,values[mid,:] - values[i,:], 'black', alpha = 0.1)
-            ax.plot(ex, values[mid,:] - values.mean(0), "#d7f500", alpha = 0.6)
+            ax.plot(ex, values[mid,:] - values.mean(0), "cyan", alpha = 0.6)
 
-plotICE(iceEx, icetempt)
-
-plt.show()
 
 fig = plt.figure()
 for i in range(len(X.columns)):
@@ -232,11 +412,19 @@ for i in range(len(X.columns)):
     ax.set_title(X.columns[i])
 
 plt.show()
+```
 
-icetempt.shape
+Note the correlation
 
-np.std(icetempt, 0).mean()
+## ICE Importance
 
+>- Calculate standard deviation of EACH ice curve
+>- average those
+>- robust to correlation
+
+## ICE Importance
+
+```{python, echo = F}
 def ICE_vips(model, x):
     imps = {}
     for i in range(len(x.columns)):
@@ -260,3 +448,65 @@ for i in range(len(ice_imps.keys())):
     plot_ICE_imp(ice_imps[list(ice_imps.keys())[i]], ax = ax, color = c)
     ax.set_title(list(ice_imps.keys())[i])
 plt.show()
+```
+
+## Advantages and disadvantages
+
+>- Very fast
+>- Robust to correlation, easy to identify 
+>- Invalid data points
+
+# Accumulated Local Effects (ALE) 
+
+```{r, echo = F}
+knitr::include_graphics("insane.jpg")
+```
+
+## Motivation
+
+- PDP alone cannot be trusted with correlation
+- Not generally intuitive with correlated variables, generate unrealistic observations
+- We need to think of alternative ways to create observations
+- Housing example
+
+```{r, echo = F}
+library(iml)
+library(ranger)
+library(kknn)
+ships <- cbind(py$X, py$y)
+```
+
+## Intuition
+
+- Work with conditional distribution of variables instead of marginal distribution
+- Look at local effects
+
+```{r, echo = F}
+image_read("https://christophm.github.io/interpretable-ml-book/images/aleplot-motivation2-1.png") %>% image_scale("x500")
+```
+
+## Problem: Average of correlated features
+
+- Consider again the housing example
+- If we average the effect of all instances where square footage = $x$, we are actually also measuring the effect for the specific number of rooms correlated to $x$
+
+
+## Solution: ALE
+
+>- Assume we are trying to learn the effect square footage = $x$.
+>- Find prediction of model at values near $x-1$, $\mathcal(E_{x-1})$
+>- Find prediction of model at values near $x+1$, $\mathcal(E_{x+1})$
+>- Subtract, allowing correlated effects to cancel out!!
+
+## Visual Intuition
+
+```{r, echo = F}
+image_read("https://christophm.github.io/interpretable-ml-book/images/aleplot-computation-1.png") %>% image_scale("x800")
+```
+
+## Formalization
+
+First, consider the PDP:
+
+
+

@@ -2,3 +2,13 @@ MedClaims/claims.obj
 MedClaims/race.obj
 MedClaims/grid.obj
 ML/*
+variableImportance/*.png
+variableImportance/ale/*.png
+variableImportance/docs/*.gif
+variableImportance/docs/*.png
+variableImportance/docs/final_files/*
+variableImportance/docs/vip_files/*
+variableImportance/docs/*.jpg
+*.zip
+variableImportance/docs/*.mp4
+variableImportance/docs/*.html

@@ -1,0 +1,417 @@
+---
+title: "Peering Into The Black Box"
+author: "David Josephs"
+date: "`r Sys.Date()`"
+output: 
+  rmdshower::shower_presentation:
+    katex: true
+    theme: material
+---
+
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+library(reticulate)
+library(tidyverse)
+library(magick)
+```
+
+## Peering Into The Black Box
+David Josephs
+ <video controls loop>
+  <source src="bbox.mp4">
+</video> 
+
+## Myths About Machine Learning 
+
+```{r, echo = F}
+#image_read("http://i.ebayimg.com/images/i/230804435160-0-1/s-l1000.jpg" )%>% image_scale("1600x1000!") %>% image_blur(30, 10)  %>% image_background("black")%>%image_implode(factor = 0.3)%>% image_emboss() %>% image_write("foot.png", format = "png")
+```
+
+<img src='foot.png' class="cover">
+
+>* <font color = "white">We must sacrifice accuracy for interpretability</font>
+>* <font color="#ff0000">Complex Models cannot be interpretable</font>
+
+
+## Why Does Interpretability Matter? 
+
+<div class="double">
+<p class="double-flow">
+<img src="https://blog.chron.com/tubular/files/2016/01/so-what-who-cares-o.gif" class="one-col-image">
+<iframe src="https://giphy.com/embed/l2SpP6QDfZJUY4Hgk" width="480" height="270" frameBorder="0" class="giphy-embed" allowFullScreen></iframe><p><a href="https://giphy.com/gifs/southparkgifs-l2SpP6QDfZJUY4Hgk">via GIPHY</a></p>
+</p><p class="double-flow">
+>- Bias
+>- Acceptance of ML
+</p>
+</div>
+
+## Model Inspection Tool \# 1: Permutation Importance
+
+> If I replace X feature with noise, how much worse will my model be?
+
+<div class="double">
+<p class="double-flow">
+>* <small>Let $\mathcal{L}$ be loss with original $k$ features, $[x_1 ... x_k]$</small>
+>* <small>Let $x^*_i$ be a permutation of $x_i$</small>
+>* <small>Let $\mathcal{L}\left(x^*_i\right) = \mathcal{L}^*(i)$ be the new loss</small>
+>* $$ VIP \left(x_i\right) = \frac{\mathcal{L}^*(i)}{\mathcal{L}}$$ 
+</p><p class="double-flow">
+
+```{r, echo = F, out.height = 400, out.width = 400}
+knitr::include_graphics("marginal.png")
+```
+
+</p></div>
+
+```{python, echo = F, message = F, warn = F, include = F}
+import seaborn as sns
+from sklearn.linear_model import LinearRegression
+from sklearn.neighbors import KNeighborsRegressor
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.datasets import load_boston, fetch_california_housing
+import matplotlib.pyplot as plt
+plt.rcParams.update({'figure.max_open_warning': 0})
+import numpy as np
+import pandas as pd
+import math
+import statistics as stats
+import matplotlib.cm as cm
+from sklearn.metrics import mean_squared_error as loss_mse
+
+cruise = pd.read_csv("https://github.com/bot13956/ML_Model_for_Predicting_Ships_Crew_Size/raw/master/cruise_ship_info.csv")
+
+
+
+
+X = cruise.loc[:, cruise.columns != "crew"]
+X = X.loc[:, X.columns != "Ship_name"]
+X = X.loc[:, X.columns != "Cruise_line"]
+y = cruise.loc[:, cruise.columns == "crew"]
+
+def split(df, p_train = 0.75, random_state = 0):
+    train = df.sample(frac = p_train, random_state = random_state)
+    test = df.drop(train.index)
+    return(train, test)
+
+(X_train, X_test), (y_train, y_test) = (split(x) for x in [X, y])
+
+lm =  LinearRegression()
+knn = KNeighborsRegressor(7)
+rf = RandomForestRegressor(n_estimators = 100)
+mods = [lm, knn, rf]
+for m in mods:
+    m.fit(X_train, y_train)
+
+
+def permutation_importance(model, x, y, loss, base = False, x_train = None, y_train = None, kind = "prop", n_rounds = 5):
+    explan = x.columns
+    baseline = loss(y, model.predict(x))
+    res = {k:[] for k in explan}
+    if (base is True):
+        res["baseline"] = []
+    for n in range(0, n_rounds):
+        for i in range(0, len(explan)):
+            col = explan[i]
+            x_temp = x.copy()
+            x_temp[col] =  np.random.permutation(x_temp[col])
+            if (kind is not "prop"):
+                res[col].append(loss(y, model.predict(x_temp)) -  baseline)
+            else:
+                res[col].append(loss(y, model.predict(x_temp)) /  baseline)
+        if (base is True):
+            x_temp = x.copy()
+            x_train2 = x_train.copy()
+            # this is not right
+            x_temp["baseline"] = np.clip(np.random.normal(size = len(x_temp)), -1., 1.)
+            x_train2["baseline"] = np.clip(np.random.normal(size = len(x_train2)), -1., 1.)
+            mod2 = type(model)()
+            mod2.fit(x_train2, y_train)
+            if (kind is not "prop"):
+                res["baseline"].append(loss(y, mod2.predict(x_temp)) -  baseline)
+            else:
+                res["baseline"].append(loss(y, mod2.predict(x_temp)) /  baseline)
+    return(pd.DataFrame.from_dict(res))
+
+def get_name(obj):
+    name =[x for x in globals() if globals()[x] is obj][0]
+    return(name)
+
+imps = {}
+for m in mods:
+    imps[get_name(m)] = permutation_importance(m, X_test, y_test, loss_mse, True,  X_train, y_train, n_rounds = 5)
+
+plt.style.use("seaborn-whitegrid")
+
+def plot(df, ax = None, color = 'blue'):
+    df1 = (df.apply(stats.mean, 0, result_type = "broadcast")).drop(df.index[1:])
+    df_temp = df1.loc[:, df.columns != 'baseline']
+    df2 = df_temp.melt(var_name = 'variable', value_name = 'importance')
+    df2 = df2.sort_values(by = "importance")
+    df.sort_index(axis = 1, ascending = False)
+    #ax = sns.barplot(x = 'cols', y = 'vals', data = df2, label = "variable_importance")
+    df2.plot(kind = 'barh', x = 'variable', y = 'importance', width = 0.8, ax = ax, color = color)
+    for n in df.columns:
+        if n is "baseline":
+            plt.axvline(x = df[n][0])
+            plt.annotate('baseline',
+                         xy = (df[n][0], 1),
+                         xytext = (df[n][0] + 0.4, 3),
+                         arrowprops = dict(facecolor = 'black',
+                                           shrink = 0.05),
+                         bbox = dict(boxstyle = "square", fc = (1,1,1)))
+```
+
+## Permutation Importance: Algorithm
+
+
+<div class="double">
+<p class="double-flow">
+
+```{r, echo = F}
+algo <- image_read("https://priestlandscomputing.files.wordpress.com/2015/10/raik283.jpg") %>% image_convolve('Sobel')
+brain <- image_read("https://i.kinja-img.com/gawker-media/image/upload/s--eiIVX4Oq--/c_fill,fl_progressive,g_center,h_900,q_80,w_1600/yccc3f4vcwsxyj6eydy2.jpg") %>% image_blur(10,10)
+
+bigdatafrink <- image_scale(image_rotate(image_background(brain, "none"), 300), "x300")
+image_scale(algo, "x400")%>% image_rotate(90) %>% image_implode(0.1) %>% image_rotate(90) %>% image_implode(0.3)%>% image_rotate(90) %>% image_implode(0.2)%>% image_rotate(90) %>% image_implode(0.1)%>% image_rotate(90) %>% image_implode(0.1)%>% image_write("algo.png", format = "png")
+```
+<img src="algo.png">
+<p class="double-flow">
+>* Fit Black box model $\mathcal{f}$ to $\vec{x}$
+>* Calculate $\mathcal{L}$
+>* For $i$ in $1 \rightarrow k$
+>   * replace $x_i$ with $x^*_i$
+>   * $\vec{(VIP)_i} = VIP(x_i)$ 
+>* repeat
+
+## Idea {.white}
+
+```{r, echo = F}
+#image_read("https://www.allstarselectricheatingandair.com/wp-content/uploads/2018/01/light-bulb.jpg" )%>% image_scale("1600x1000!") %>% image_blur(30, 10)   %>% image_write("light.png", format = "png")
+```
+
+<img src="light.png" class="cover">
+
+<font color="white">
+One idea to improve this approach is to ask the question: "If I *add* noise to my model, how much worse will it get?" This can be used as a common sense baseline for importance
+</font>
+
+## { .fullpage }
+
+<div class="fullpage width">
+<img src="cruise_pvimp.png">
+</div>
+
+## { .fullpage }
+
+<img src="https://i1.wp.com/www.makesmarterdecisions.com/wp-content/uploads/2016/07/Pro-Con-Pic-1.png?fit=1290%2C782&ssl=1" class="cover">
+<div class="double">
+<p class="double-flow">
+<br><br>
+
+>- <font color="white">Fast</font>
+
+>- <font color="white">Intuitive</font>
+
+>- <font color="white">Easy to implement</font>
+</p><p class="double-flow">
+<br><br>
+
+>- <font color="white">Unrealistic observations with correlation</font>
+
+>- <font color="white">Loss-based understanding</font>
+
+</p></div>
+
+
+
+## Model Inspection Tool \# 2: Partial Dependence
+
+> If feature $x_n$ has value $v$, what will my model predict, on average?
+
+<div class="double">
+<p class="double-flow">
+>-  Consider a given set of features, $\left\{x_1 .. x_k \right\}$, a black box prediction function $\hat{\mathcal{f}}(\mathbf{x})$
+>-  Let $z_s$ represent an interest set within x, $x_i$, and $z_c$, its complement
+</p><p class="double-flow">
+
+>-  We can then define $\mathcal{f}\left(z_s\right)$, the true partial dependence of the function response on $z_s$ as:$$
+f(z_s) = E\left[ \hat{f} (z_s, z_c) \right | z_c] $$
+
+</p></div>
+
+## Model Inspection Tool \# 2: Partial Dependence
+
+
+<div class="double">
+<p class="double-flow">
+
+$$E\left[ \hat{f} (z_s, z_c) \right | z_c] = \int \hat{f} (z_s, z_c) p_c(z_c)dz_c $$
+
+>- Where $p_c$ is marginal probability distribution of $z_c$, $\int p(x) dz_s$A
+
+</p><p class="double-flow">
+
+<br>
+<br>
+<br>
+
+>- We can sample this, yielding $$
+\tilde{f}_s(z_s) = 1/n\sum_{i=1}^{i=k} \hat{f}(z_s,z_{(i,c)})$$
+>- Average away all other predictors
+</p></div>
+
+## Partial Dependence Algorithm
+
+```{r, echo = F}
+#image_read("https://i.makeagif.com/media/12-06-2016/Y-_cIA.gif") %>% image_scale("x200")  %>% image_write("ani.gif")
+```
+
+
+<div class="double">
+<p class="double-flow">
+
+>- for $i \in {1,...,p}$
+>   - Copy entire set and replace all values of $x_n$ with $x_{ni}$
+>   - Compute all predicted values
+>- Average all predictions to obtain $\tilde f_i(x_{ni})$
+
+</p><p class="double-flow">
+<img src="ani.gif">
+</p>
+</div>
+
+## {.fullpage}
+
+<div class="fullpage width">
+<img src="Cruise_pdp.png">
+</div>
+
+
+## Partial Dependence Based Importance 
+
+
+Variables which are more important ***should*** have a greater affect on prediction outcome than unimport variables. Therefore, we can calculate importance using the flatness of the PDP curve. This means simply:
+$$
+VIP_{pdp} = \hat\sigma(\tilde{f}_s(z_s))
+$$
+or (range/n_features) in the case of categorical $z_s$
+
+
+## {.fullpage .black}
+
+<div class="fullpage width">
+<img src="crews_pdp_imps.png">
+</div>
+
+
+## { .fullpage }
+
+<img src="https://i1.wp.com/www.makesmarterdecisions.com/wp-content/uploads/2016/07/Pro-Con-Pic-1.png?fit=1290%2C782&ssl=1" class="cover">
+<div class="double">
+<p class="double-flow">
+<br><br>
+
+>- <font color="white">Intuitive</font>
+
+>- <font color="white">Easy to implement</font>
+</p><p class="double-flow">
+<br><br>
+
+<br><br>
+
+>- <font color="white">Unrealistic observations with correlation</font>
+
+>- <font color="white">Completely incorrect with correlation</font>
+
+>- <font color="white">Slow</font>
+
+</p></div>
+
+## Reflections
+
+>- Why does PDP fail on correlations?
+>   - Unrealistic observations
+>   - Averaging effects of other variables
+>   - When we take the average effect of variable X, correlated with variable Z, we are actually also measuring the average effect of Z across X. This means if they are correlated in the right way, we can actually make important variable X seem unimportant.
+>   - Note how important tonnage was in the (rf) permutation, and not here. Tonnage and Cabin are the most important variables in the random forest, and as we will see shortly, are correlated.
+
+
+## Individual Conditional Expectation (ICE) {.black}
+
+<img src='https://www.classeq.co.uk/wp-content/uploads/2017/07/cube-ice.jpg' class="cover">
+
+<div class="double">
+<p class="double-flow">
+>- Very simple: do just as you do with PDP, but without averaging
+>- For each instance in the set $\left\{\left(x_S^i, x_C^i\right)\right\}^N_{i=1}$:
+>   * plot curve $\hat{f}^{(i)}_S$, where $x_S^{(i)}$ is changing and $x_C^{(i)}$ is fixed
+
+</p> <p class="double-flow">
+
+>- Algorithm:
+>     - Consider a feature of interest, $x_s$
+>     - For $i \in x_s$:
+>         - Replace all values of $x_s$ with $x_s[i]$
+>         - Plot
+>     - Repeat
+
+
+## { .fullpage }
+
+
+<div class="fullpage width">
+<img src="Crews_ice.png">
+</div>
+
+## Correlation-Robust Importance with ICE
+
+**Solution**: 
+
+<div class="double">
+<p class="double-flow">
+
+>1. Measure standard deviation (or range/n_levels for categorical) for each ICE curve
+>2. Average the per curve sd into a single value
+
+</p><p class="double-flow">
+<iframe src="https://giphy.com/embed/OK27wINdQS5YQ" width="480" height="338" frameBorder="0" class="giphy-embed" allowFullScreen></iframe><p><a href="https://giphy.com/gifs/mind-seinfeild-OK27wINdQS5YQ">via GIPHY</a></p>
+</p>
+## {.fullpage}
+
+
+<div class="fullpage width">
+<img src="ice_imps.png">
+</div>
+
+
+## { .fullpage }
+
+<img src="https://i1.wp.com/www.makesmarterdecisions.com/wp-content/uploads/2016/07/Pro-Con-Pic-1.png?fit=1290%2C782&ssl=1" class="cover">
+<div class="double">
+<p class="double-flow">
+<br><br>
+
+>- <font color="white">Intuitive</font>
+>- <font color="white">Easy to implement</font>
+>- <font color="white">Robust to correlation</font>
+</p><p class="double-flow">
+<br><br>
+
+>- <font color="white">Unrealistic observations still used at times</font>
+>- <font color="white">Slow</font>
+>- <font color="white">Interpretation difficult</font>
+
+</p></div>
+
+## Accumulated Local Effects (ALE) {.white}
+
+```{r, echo = F}
+image_read("https://i.kinja-img.com/gawker-media/image/upload/s--eiIVX4Oq--/c_fill,fl_progressive,g_center,h_900,q_80,w_1600/yccc3f4vcwsxyj6eydy2.jpg") %>% image_scale("1600x1000!") %>% image_blur(30, 10) %>% image_write("gigabrain.jpg", format = "jpg")
+```
+
+<img src="gigabrain.jpg" class = "cover">
+
+>- <font color = "white"> Uses realistic values </font>
+>- <font color = "white">Can identify interactive effects</font>
+>- <font color = "white">Completely robust to correlation</font>

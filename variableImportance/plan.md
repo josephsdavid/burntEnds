@@ -1,6 +1,13 @@
-# Model agnostic variable importance in python!
+# Variable Importance
 
-Plan: 
-- implement
-- document
-- present
+We go through the different degrees of enlightenment for variable importance
+
+## Permutation Importance
+
+## PDP importance
+
+## ICE Importance
+
+## Conditional Importance
+
+## Aggregate Importance
